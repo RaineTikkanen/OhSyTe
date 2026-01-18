@@ -13,6 +13,26 @@ fn format_date(date:i32) -> (i32,i32,i32){
     return (year,month,day)
 }
 
+fn print_events_on_date(events: [(i32, &str);18], date: (i32,i32)){
+
+    println!("Events on date: {}.{}. :", date.1, date.0);
+
+
+    let mut event_found = false;
+
+    for event in events {
+        let event_date = format_date(event.0);
+        if date.0 == event_date.1 && date.1 == event_date.2 {
+            event_found=true;
+            println!("{}: {}", event_date.0, event.1);
+        };
+    };
+
+    if !event_found {
+        println!("No events found on date {}.{}.", date.1, date.0)
+    }
+}
+
 fn main() {
     let today= (2026, 01, 17);
 
@@ -37,18 +57,19 @@ fn main() {
         (1959_01_22, "Meiju Suvas is born."),
     ];
 
-    let mut date_found = false;
+    
+    println!();
 
-    for event in events {
-        let event_date = format_date(event.0);
-        if today.1 == event_date.1 && today.2 == event_date.2 {
-            date_found=true;
-            println!("{}: {}", event_date.0, event.1);
-        };
-    };
+    print_events_on_date(events, (today.1, today.2));
 
-    if !date_found {
-        println!("No events found on date {}.{}.", today.2, today.1)
+    println!();
+
+    for i in 15..23{
+        println!();
+        let date = (1, i);
+        
+        print_events_on_date(events, date);
     }
+
 
 }
