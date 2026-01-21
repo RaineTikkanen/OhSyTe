@@ -15,8 +15,7 @@ fn format_date(date:i32) -> (i32,i32,i32){
 
 fn print_events_on_date(events: [(i32, &str);18], date: (i32,i32)){
 
-    println!("Events on date: {}.{}. :", date.1, date.0);
-
+    println!("Events on date: {}.{}.", date.1, date.0);
 
     let mut event_found = false;
 
@@ -57,10 +56,11 @@ fn main() {
         (1959_01_22, "Meiju Suvas is born."),
     ];
 
-    
     println!();
 
-    print_events_on_date(events, (today.1, today.2));
+    let date=(today.1, today.2);
+
+    print_events_on_date(events, date);
 
     println!();
 
@@ -70,6 +70,4 @@ fn main() {
         
         print_events_on_date(events, date);
     }
-
-
 }
