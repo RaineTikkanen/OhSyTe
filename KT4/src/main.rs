@@ -1,4 +1,4 @@
-use chrono::{NaiveDate, Local, DateTime, Datelike};
+use chrono::{NaiveDate, Local, Datelike};
 
 
 fn main() {
@@ -7,17 +7,16 @@ fn main() {
         Ok(b)=> b,
         Err(_)=>{
             println!("BIRTHDAY environment variable not found");
-            std::process::exit(1);
+            std::process::exit(1);  
         }
     };
 
     let date_format= "%Y-%m-%d";
-    let date_print_format = "%d.%m.%Y";
     let birthday_parse_result= NaiveDate::parse_from_str(&env_birthday, date_format);
 
     let birthday = match birthday_parse_result{
         Ok(b)=>b,
-        Err(_)=>{
+        Err(_)=>{   
             println!("BIRTHDAY environment variable not valid. Please set variable as YEAR-MONTH-DAY");
             std::process::exit(1);
         },

@@ -74,29 +74,34 @@ impl Event {
     }
 }
 
-
-fn print_events_on_date(events: &Vec<Event>, date: Date) {
-
+fn print_events_on_date(events: &Vec<Event>, date: Date) { 
+    
     let day_ending = match date.day {
         1 => "st",
         2 => "nd",
         3 => "rd",
-        _ =>"th"
+        _ => "th",
     };
 
-    println!("Events on date: {:?} {}{}", date.month, date.day, day_ending);
+    println!(
+        "Events on date: {:?} {}{}",
+        date.month, date.day, day_ending
+    );
 
     let mut event_found = false;
 
     for event in events {
-        if date.month_day() == event.date.month_day(){
+        if date.month_day() == event.date.month_day() {
             event_found = true;
             println!("{}: {}", event.date.year, event.description);
         };
     }
 
     if !event_found {
-        println!("No events found on date {:?} {}{}", date.month, date.day, day_ending)
+        println!(
+            "No events found on date {:?} {}{}",
+            date.month, date.day, day_ending
+        )
     }
 }
 
@@ -179,7 +184,9 @@ fn main() {
         ),
         Event::new(
             Date::new(1869, Month::January, 21),
-            String::from("Grigori Yefimovich \"Ra-Ra\" Rasputin, Russia's greatest love machine, is born."),
+            String::from(
+                "Grigori Yefimovich \"Ra-Ra\" Rasputin, Russia's greatest love machine, is born.",
+            ),
             Category::new("history", "biography"),
         ),
         Event::new(
@@ -204,7 +211,9 @@ fn main() {
         ),
         Event::new(
             Date::new(1918, Month::January, 25),
-            String::from("The Ukrainian People's Republic declares independence from Soviet Russia"),
+            String::from(
+                "The Ukrainian People's Republic declares independence from Soviet Russia",
+            ),
             Category::new("geography", "ukraine"),
         ),
         Event::new(
@@ -237,8 +246,5 @@ fn main() {
         println!();
     }
 
-
     print_events_on_date(&events, today);
-
-
 }
