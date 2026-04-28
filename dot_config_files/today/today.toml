@@ -1,0 +1,24 @@
+[[providers]]
+name = "history"
+kind = "csv"
+resource = "history.csv"
+
+[[providers]]
+name = "programming"
+kind = "text"
+resource = "programming.txt"
+
+[[providers]]
+name = "computing"
+kind = "text"
+resource = "computing.txt"
+
+[[providers]]
+name = "testing"
+kind = "test"
+resource = ""
+
+[[providers]]
+name = "sqlite"
+kind = "sqlite"
+resource = "events.db"
