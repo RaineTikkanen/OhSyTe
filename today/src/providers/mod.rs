@@ -1,10 +1,7 @@
-use crate::event::Event;
+use crate::{event::Event, filter::EventFilter};
 
 mod text;
 pub use text::TextFileProvider;
-
-mod test;
-pub use test::TestProvider;
 
 mod csv;
 pub use csv::CSVFileProvider;
@@ -12,7 +9,10 @@ pub use csv::CSVFileProvider;
 mod sqlite;
 pub use sqlite::SQLiteProvider;
 
+mod web;
+pub use web::WebProvider;
+
 pub trait EventProvider {
     fn name(&self) -> String;
-    fn get_events(&self, events: &mut Vec<Event>);
+    fn get_events(&self, filter: &EventFilter, events: &mut Vec<Event>);
 }

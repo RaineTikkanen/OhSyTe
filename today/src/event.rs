@@ -15,6 +15,13 @@ pub struct Event {
 }
 
 impl Event {
+    pub fn category(&self) -> Category {
+        self.category.clone()
+    }
+    pub fn description(&self) -> String {
+        self.description.clone()
+    }
+
     pub fn new_singular(date: NaiveDate, description: String, category: Category) -> Self {
         Event {
             kind: EventKind::Singular(date),
@@ -51,7 +58,7 @@ impl fmt::Display for Event {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Hash, Eq)]
 pub struct MonthDay {
     month: u32,
     day: u32,
@@ -69,9 +76,17 @@ impl MonthDay {
         let day: u32 = s[2..].parse().unwrap();
         MonthDay { month, day }
     }
+
+    pub fn month(&self) -> u32 {
+        self.month.clone()
+    }
+
+    pub fn day(&self) -> u32 {
+        self.day.clone()
+    }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Hash, Eq)]
 pub struct Category {
     primary: String,
     secondary: Option<String>,

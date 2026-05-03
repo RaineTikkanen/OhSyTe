@@ -1,4 +1,5 @@
 use crate::event::{Category, Event};
+use crate::filter::EventFilter;
 use crate::providers::EventProvider;
 
 use chrono::NaiveDate;
@@ -32,7 +33,7 @@ impl EventProvider for TextFileProvider {
         self.name.clone()
     }
 
-    fn get_events(&self, events: &mut Vec<Event>) {
+    fn get_events(&self, filter: &EventFilter, events: &mut Vec<Event>) {
         let result = File::open(self.path.clone());
         let file = match result {
             Ok(f) => f,
@@ -74,7 +75,9 @@ impl EventProvider for TextFileProvider {
                         Ok(date) => {
                             let category = Category::from_str(&category_string);
                             let event = Event::new_singular(date, description.clone(), category);
-                            events.push(event);
+                            if filter.accepts(&event) {
+                                events.push(event);
+                            }
                         }
                         Err(_) => {
                             eprintln!("Invalid timestamp '{}'", date_string);

@@ -1,4 +1,5 @@
 use crate::event::{Category, Event};
+use crate::filter::EventFilter;
 use crate::providers::EventProvider;
 
 use chrono::NaiveDate;
@@ -24,7 +25,7 @@ impl EventProvider for CSVFileProvider {
         self.name.clone()
     }
 
-    fn get_events(&self, events: &mut Vec<Event>) {
+    fn get_events(&self, filter: &EventFilter, events: &mut Vec<Event>) {
         let mut reader = match ReaderBuilder::new()
             .has_headers(false)
             .from_path(self.path.clone())
@@ -45,7 +46,9 @@ impl EventProvider for CSVFileProvider {
                 Ok(date) => {
                     let category = Category::from_str(&category_string);
                     let event = Event::new_singular(date, description.clone(), category);
-                    events.push(event);
+                    if filter.accepts(&event) {
+                        events.push(event);
+                    }
                 }
                 Err(_) => {
                     eprintln!("Invalid date '{}'", date_string);
