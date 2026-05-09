@@ -1,10 +1,12 @@
 use std::fmt;
 
-use chrono::{Datelike, NaiveDate};
+use chrono::{Datelike, Local, NaiveDate};
+use log::debug;
 
 #[derive(Debug, PartialEq)]
 pub enum EventKind {
     Singular(NaiveDate),
+    Annual(MonthDay),
 }
 
 #[derive(Debug, PartialEq)]
@@ -23,16 +25,26 @@ impl Event {
     }
 
     pub fn new_singular(date: NaiveDate, description: String, category: Category) -> Self {
-        Event {
+        Self {
             kind: EventKind::Singular(date),
             description,
             category,
         }
     }
 
+    pub fn new_annual(month_day: MonthDay, description: String, category: Category) -> Self {
+        Self {
+            kind: EventKind::Annual(month_day),
+            description,
+            category,
+        }
+    }
+
     pub fn year(&self) -> i32 {
+        let today: NaiveDate = Local::now().date_naive();
         match &self.kind {
             EventKind::Singular(date) => date.year(),
+            EventKind::Annual(_month_day) => today.year(),
         }
     }
 
@@ -41,6 +53,10 @@ impl Event {
             EventKind::Singular(date) => MonthDay {
                 month: date.month(),
                 day: date.day(),
+            },
+            EventKind::Annual(month_day) => MonthDay {
+                month: month_day.month,
+                day: month_day.day,
             },
         }
     }
@@ -70,6 +86,7 @@ impl MonthDay {
     }
 
     pub fn from_str(s: &str) -> Self {
+        debug!("month_day string: {}", s);
         assert!(s.len() == 4);
         let month_string = &s[..2];
         let month = month_string.parse().unwrap();
@@ -129,13 +146,5 @@ impl fmt::Display for Category {
             Some(sec) => write!(f, "{}/{}", self.primary, sec),
             None => write!(f, "{}", self.primary),
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn test_something() {
-        assert_eq!(1 + 1, 2);
     }
 }

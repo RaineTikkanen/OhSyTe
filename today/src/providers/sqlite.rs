@@ -2,6 +2,7 @@ use crate::event::{Category, Event};
 use crate::filter::EventFilter;
 use crate::providers::EventProvider;
 use chrono::NaiveDate;
+use log::error;
 use sqlite::{Connection, State};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -79,7 +80,7 @@ impl SQLiteProvider {
         let mut statement = match connection.prepare(category_query) {
             Ok(s) => s,
             Err(e) => {
-                eprintln!("Error preparing category query: {}", e);
+                error!("Error preparing category query: {}", e);
                 return category_map;
             }
         };
@@ -108,7 +109,7 @@ impl EventProvider for SQLiteProvider {
         let connection = match Connection::open(self.path.clone()) {
             Ok(c) => c,
             Err(e) => {
-                eprintln!("Error connecting to database: {}", e);
+                error!("Error connecting to database: {}", e);
                 return;
             }
         };
@@ -122,7 +123,7 @@ impl EventProvider for SQLiteProvider {
         let mut statement = match connection.prepare(event_query) {
             Ok(s) => s,
             Err(e) => {
-                eprintln!("Error preparing event query: {}", e);
+                error!("Error preparing event query: {}", e);
                 return;
             }
         };
@@ -130,35 +131,35 @@ impl EventProvider for SQLiteProvider {
             let date_string = match statement.read::<String, _>("event_date") {
                 Ok(s) => s,
                 Err(e) => {
-                    eprintln!("Error: {}", e);
+                    error!("Error: {}", e);
                     continue;
                 }
             };
             let date = match NaiveDate::parse_from_str(&date_string, "%F") {
                 Ok(d) => d,
                 Err(e) => {
-                    eprintln!("Error: {}", e);
+                    error!("Error: {}", e);
                     continue;
                 }
             };
             let description = match statement.read::<String, _>("event_description") {
                 Ok(d) => d,
                 Err(e) => {
-                    eprintln!("Error: {}", e);
+                    error!("Error: {}", e);
                     continue;
                 }
             };
             let category_id = match statement.read::<i64, _>("category_id") {
                 Ok(c) => c,
                 Err(e) => {
-                    eprintln!("Error: {}", e);
+                    error!("Error: {}", e);
                     continue;
                 }
             };
             let category = match category_map.get(&category_id) {
                 Some(c) => c,
                 None => {
-                    eprintln!("Error: could not find category matching the category id");
+                    error!("Error: could not find category matching the category id");
                     continue;
                 }
             };
@@ -226,10 +227,9 @@ mod tests {
              ('2025-03-25', 'historical sports event', 3)",
             )
             .unwrap();
-
     }
 
-    fn create_faulty_lines_to_db(path: &Path){
+    fn create_faulty_lines_to_db(path: &Path) {
         let connection = Connection::open(path).unwrap();
         connection
             .execute(
@@ -238,6 +238,26 @@ mod tests {
              ('invalid-date', 'Test event with invalid date', 1)",
             )
             .unwrap();
+    }
+
+    fn get_test_events() -> [Event; 3] {
+        return [
+            Event::new_singular(
+                NaiveDate::from_ymd_opt(2023, 1, 15).unwrap(),
+                String::from("historical event"),
+                Category::new("history", "politics"),
+            ),
+            Event::new_singular(
+                NaiveDate::from_ymd_opt(2024, 1, 15).unwrap(),
+                String::from("tech event"),
+                Category::new("programming", "technology"),
+            ),
+            Event::new_singular(
+                NaiveDate::from_ymd_opt(2025, 3, 25).unwrap(),
+                String::from("historical sports event"),
+                Category::new("ice-hockey", "sports"),
+            ),
+        ];
     }
 
     #[test]
@@ -254,28 +274,11 @@ mod tests {
 
         let _ = fs::remove_file(path);
 
-        let test_event_first = Event::new_singular(
-            NaiveDate::from_ymd_opt(2023, 1, 15).unwrap(),
-            String::from("historical event"),
-            Category::new("history", "politics"),
-        );
-
-        let test_event_second = Event::new_singular(
-            NaiveDate::from_ymd_opt(2024, 1, 15).unwrap(),
-            String::from("tech event"),
-            Category::new("programming", "technology"),
-        );
-        let test_event_third = Event::new_singular(
-            NaiveDate::from_ymd_opt(2025, 3, 25).unwrap(),
-            String::from("historical sports event"),
-            Category::new("ice-hockey", "sports"),
-        );
-
+        let test_events = get_test_events();
         assert_eq!(events.len(), 3);
-        assert_eq!(events[0], test_event_first);
-        assert_eq!(events[1], test_event_second);
-        assert_eq!(events[2], test_event_third);
-
+        assert_eq!(events[0], test_events[0]);
+        assert_eq!(events[1], test_events[1]);
+        assert_eq!(events[2], test_events[2]);
     }
 
     #[test]
@@ -287,21 +290,14 @@ mod tests {
         let mut events: Vec<Event> = Vec::new();
         let provider = SQLiteProvider::new("test", path);
         let category = Category::new("history", "politics");
-        let filter = FilterBuilder::new()
-        .category(category)
-        .build();
+        let filter = FilterBuilder::new().category(category).build();
         provider.get_events(&filter, &mut events);
 
         let _ = fs::remove_file(path);
-
-        let test_event_first = Event::new_singular(
-            NaiveDate::from_ymd_opt(2023, 1, 15).unwrap(),
-            String::from("historical event"),
-            Category::new("history", "politics"),
-        );
+        let test_events = get_test_events();
 
         assert_eq!(events.len(), 1);
-        assert_eq!(events[0], test_event_first);
+        assert_eq!(events[0], test_events[0]);
     }
 
     #[test]
@@ -313,27 +309,16 @@ mod tests {
         let mut events: Vec<Event> = Vec::new();
         let provider = SQLiteProvider::new("test", path);
         let month_day = MonthDay::new(1, 15);
-        let filter = FilterBuilder::new()
-        .month_day(month_day)
-        .build();
+        let filter = FilterBuilder::new().month_day(month_day).build();
         provider.get_events(&filter, &mut events);
 
         let _ = fs::remove_file(path);
 
-        let test_event_first = Event::new_singular(
-            NaiveDate::from_ymd_opt(2023, 1, 15).unwrap(),
-            String::from("historical event"),
-            Category::new("history", "politics"),
-        );
-        let test_event_second = Event::new_singular(
-            NaiveDate::from_ymd_opt(2024, 1, 15).unwrap(),
-            String::from("tech event"),
-            Category::new("programming", "technology"),
-        );
+        let test_events = get_test_events();
 
         assert_eq!(events.len(), 2);
-        assert_eq!(events[0], test_event_first);
-        assert_eq!(events[1], test_event_second);
+        assert_eq!(events[0], test_events[0]);
+        assert_eq!(events[1], test_events[1]);
     }
 
     #[test]
@@ -344,31 +329,19 @@ mod tests {
 
         let mut events: Vec<Event> = Vec::new();
         let provider = SQLiteProvider::new("test", path);
-        let filter = FilterBuilder::new()
-        .text("hist".to_string())
-        .build();
+        let filter = FilterBuilder::new().text("hist".to_string()).build();
         provider.get_events(&filter, &mut events);
 
         let _ = fs::remove_file(path);
 
-        let test_event_first = Event::new_singular(
-            NaiveDate::from_ymd_opt(2023, 1, 15).unwrap(),
-            String::from("historical event"),
-            Category::new("history", "politics"),
-        );
-
-        let test_event_second = Event::new_singular(
-            NaiveDate::from_ymd_opt(2025, 3, 25).unwrap(),
-            String::from("historical sports event"),
-            Category::new("ice-hockey", "sports"),
-        );
+        let test_events = get_test_events();
 
         assert_eq!(events.len(), 2);
-        assert_eq!(events[0], test_event_first);
-        assert_eq!(events[1], test_event_second);
+        assert_eq!(events[0], test_events[0]);
+        assert_eq!(events[1], test_events[2]);
     }
-    
-     #[test]
+
+    #[test]
     fn successfull_read_events_with_text_and_date_filters() {
         let path = Path::new("test_temp5.db");
 
@@ -378,23 +351,18 @@ mod tests {
         let provider = SQLiteProvider::new("test", path);
         let month_day = MonthDay::new(1, 15);
         let filter = FilterBuilder::new()
-        .text("hist".to_string())
-        .month_day(month_day)
-        .build();
+            .text("hist".to_string())
+            .month_day(month_day)
+            .build();
         provider.get_events(&filter, &mut events);
 
         let _ = fs::remove_file(path);
 
-        let test_event_first = Event::new_singular(
-            NaiveDate::from_ymd_opt(2023, 1, 15).unwrap(),
-            String::from("historical event"),
-            Category::new("history", "politics"),
-        );
+        let test_events = get_test_events();
 
         assert_eq!(events.len(), 1);
-        assert_eq!(events[0], test_event_first);
+        assert_eq!(events[0], test_events[0]);
     }
-    
 
     #[test]
     fn missing_db_file() {

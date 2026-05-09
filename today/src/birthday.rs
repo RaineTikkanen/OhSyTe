@@ -1,36 +1,48 @@
 use chrono::{Datelike, Local, NaiveDate};
+use log::{debug, error, info};
 use std::env;
 
 pub fn handle_birthday() {
     const NAME: &str = "BIRTHDATE";
-    let value = env::var(NAME);
-    if !value.is_ok() {
-        return;
-    }
 
-    let value = value.unwrap();
+    let birthdate_string = match env::var(NAME) {
+        Ok(b) => b,
+        Err(_) => {
+            info!("BIRTHDATE environment variable not set");
+            return;
+        }
+    };
 
-    match NaiveDate::parse_from_str(&value, "%F") {
+    debug!("birthdate_string: {}", birthdate_string);
+
+    match NaiveDate::parse_from_str(&birthdate_string, "%F") {
         Ok(birthdate) => {
             let mut result = String::new();
 
             let today: NaiveDate = Local::now().date_naive();
+
+            debug!("today: {}", today);
+            debug!("birthdate: {}", birthdate);
+
             if birthdate.month() == today.month() && birthdate.day() == today.day() {
                 result.push_str("Happy birthday! ");
             }
 
             let day_count = (today - birthdate).num_days();
 
+            debug!("day_count: {}", day_count);
+
             let message = make_message(day_count);
+
             result.push_str(&message);
             println!("{}", result);
             println!();
         }
         Err(_) => {
-            eprintln!(
+            error!(
                 "Error in the '{}' environment variable: \
                 '{}' is not a valid date.",
-                NAME, value
+                NAME, birthdate_string
             );
         }
     }
@@ -48,9 +60,10 @@ fn make_message(day_count: i64) -> String {
     } else if day_count < 0 {
         message.push_str("Are you from the future?");
     } else {
-        // must be zero
         message.push_str("Looks like you're new here.");
     }
+
+    debug!("message: {}", message);
 
     message
 }
