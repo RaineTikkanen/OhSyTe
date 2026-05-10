@@ -1,7 +1,7 @@
 use crate::event::{Category, Event, EventKind, MonthDay};
 use crate::filter::EventFilter;
 use crate::providers::{EventProvider, EventProviderError};
-use chrono::{Datelike, Local, NaiveDate};
+use chrono::{Datelike, NaiveDate};
 use log::error;
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, BufWriter, Write, ErrorKind};

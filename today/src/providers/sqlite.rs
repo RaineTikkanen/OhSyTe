@@ -5,8 +5,6 @@ use chrono::NaiveDate;
 use log::{error, debug};
 use sqlite::{Connection, State};
 use std::collections::HashMap;
-use std::fs::{File, OpenOptions};
-use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
 
 pub struct SQLiteProvider {

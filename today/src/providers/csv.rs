@@ -1,11 +1,11 @@
 use crate::event::{Category, Event, EventKind, MonthDay};
 use crate::filter::EventFilter;
 use crate::providers::{EventProvider, EventProviderError};
-use chrono::{Datelike, Local, NaiveDate};
+use chrono::{Datelike, NaiveDate};
 use csv::ReaderBuilder;
-use log::{debug, error, trace};
-use std::fs::{File, OpenOptions};
-use std::io::{self, BufRead, BufReader, BufWriter, Write, ErrorKind};
+use log::{debug, error};
+use std::fs::{OpenOptions};
+use std::io::{BufWriter, Write, ErrorKind};
 use std::path::{Path, PathBuf};
 
 pub struct CSVFileProvider {
