@@ -7,8 +7,10 @@ pub enum FilterOption {
     MonthDay(MonthDay),
     Category(Category),
     Text(String),
+    ExcludeCategories(Vec<Category>),
 }
 
+#[derive(Debug)]
 pub struct EventFilter {
     options: HashSet<FilterOption>,
 }
@@ -32,6 +34,7 @@ impl EventFilter {
                 FilterOption::MonthDay(month_day) => *month_day == event.month_day(),
                 FilterOption::Category(category) => *category == event.category(),
                 FilterOption::Text(text) => event.description().contains(text),
+                FilterOption::ExcludeCategories(categories) => !categories.contains(&event.category())
             };
             results.push(result);
         }
@@ -48,6 +51,12 @@ impl EventFilter {
         self.options
             .iter()
             .any(|option| matches!(option, &FilterOption::Category(_)))
+    }
+
+    pub fn contains_exclude_categories(&self) -> bool {
+        self.options
+            .iter()
+            .any(|option| matches!(option, &FilterOption::ExcludeCategories(_)))
     }
 
     pub fn contains_text(&self) -> bool {
@@ -82,6 +91,15 @@ impl EventFilter {
         }
         None
     }
+    pub fn exclude_categories(&self) -> Option<Vec<Category>> {
+        for option in self.options.iter() {
+            match option {
+                FilterOption::ExcludeCategories(categories) => return Some(categories.clone()),
+                _ => (),
+            }
+        }
+        None
+    }
 }
 
 pub struct FilterBuilder {
@@ -102,6 +120,11 @@ impl FilterBuilder {
 
     pub fn category(mut self, category: Category) -> FilterBuilder {
         self.options.insert(FilterOption::Category(category));
+        self
+    }
+
+    pub fn exclude_categories(mut self, categories: Vec<Category>) -> FilterBuilder {
+        self.options.insert(FilterOption::ExcludeCategories(categories));
         self
     }
 
@@ -212,7 +235,7 @@ mod tests {
     }
 
     #[test]
-    fn filter_deniew_wrong_description() {
+    fn filter_denies_wrong_description() {
         let category = Category::new("programming", "rust");
         let event = Event::new_singular(
             NaiveDate::from_ymd_opt(2026, 3, 5).unwrap(),
@@ -223,4 +246,17 @@ mod tests {
 
         assert!(!filter.accepts(&event));
     }
+
+    #[test]
+    fn filter_excludes_category() {
+        let category = Category::new("programming", "rust");
+        let event = Event::new_singular(
+            NaiveDate::from_ymd_opt(2026, 3, 5).unwrap(),
+            "Test description".to_string(),
+            category.clone(),
+        );
+        let filter = FilterBuilder::new().exclude_categories(vec![category]).build();
+        assert!(!filter.accepts(&event));
+    }
+
 }

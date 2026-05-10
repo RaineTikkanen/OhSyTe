@@ -1,9 +1,10 @@
+use std::error::Error;
 use std::fmt;
 
 use chrono::{Datelike, Local, NaiveDate};
 use log::debug;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum EventKind {
     Singular(NaiveDate),
     Annual(MonthDay),
@@ -11,9 +12,9 @@ pub enum EventKind {
 
 #[derive(Debug, PartialEq)]
 pub struct Event {
-    pub kind: EventKind,
-    pub description: String,
-    pub category: Category,
+    kind: EventKind,
+    description: String,
+    category: Category,
 }
 
 impl Event {
@@ -22,6 +23,9 @@ impl Event {
     }
     pub fn description(&self) -> String {
         self.description.clone()
+    }
+    pub fn kind(&self) -> EventKind {
+        self.kind.clone()
     }
 
     pub fn new_singular(date: NaiveDate, description: String, category: Category) -> Self {
@@ -80,18 +84,35 @@ pub struct MonthDay {
     day: u32,
 }
 
+#[derive(Debug)]
+pub enum MonthDayParseError {
+    InvalidFormat,
+    InvalidMonth,
+    InvalidDay,
+}
+
 impl MonthDay {
     pub fn new(month: u32, day: u32) -> Self {
         Self { month, day }
     }
 
-    pub fn from_str(s: &str) -> Self {
+    pub fn from_str(s: &str) -> Result<Self, MonthDayParseError> {
         debug!("month_day string: {}", s);
-        assert!(s.len() == 4);
-        let month_string = &s[..2];
-        let month = month_string.parse().unwrap();
-        let day: u32 = s[2..].parse().unwrap();
-        MonthDay { month, day }
+        match s.len() {
+            4 => {
+                let month_string = &s[..2];
+                let month = month_string.parse().unwrap();
+                if month < 1 || month > 12 {
+                    return Err(MonthDayParseError::InvalidMonth);
+                }
+                let day: u32 = s[2..].parse().unwrap();
+                if day < 1 || day > 31 {
+                    return Err(MonthDayParseError::InvalidDay);
+                }
+                Ok(MonthDay { month, day })
+            }
+            _ => Err(MonthDayParseError::InvalidFormat),
+        }
     }
 
     pub fn month(&self) -> u32 {
@@ -100,6 +121,12 @@ impl MonthDay {
 
     pub fn day(&self) -> u32 {
         self.day.clone()
+    }
+}
+
+impl fmt::Display for MonthDay {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:02}-{:02}", self.month, self.day)
     }
 }
 

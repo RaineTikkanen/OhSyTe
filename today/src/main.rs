@@ -1,21 +1,49 @@
 use chrono::{Datelike, Local, NaiveDate};
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use dirs;
 use log::{debug, error, info};
 use std::fs;
 use std::path::PathBuf;
-use today::{Config, run};
+use today::{Config, add_event, run};
+mod birthday;
+use birthday::handle_birthday;
 
-
-use today::event::MonthDay;
+use today::event::{Category, Event, MonthDay};
 
 use today::filter::{EventFilter, FilterBuilder};
+
+#[derive(Subcommand, Debug, Clone)]
+enum Command {
+    /// List all event providers
+    Providers,
+    /// Adds an event to an event provider
+    Add {
+        #[arg(short, long, help = "Name of event provider")]
+        provider_name: String,
+        #[arg(short, long, help = "Date of event. Format: YYYY-MM-DD")]
+        date: String,
+        #[arg(short = 'e', long, help = "Description of event")]
+        description: String,
+        #[arg(short, long, help = "Category of event. Format: primary[/secondary]")]
+        category: String,
+    },
+}
 
 #[derive(Parser, Debug)]
 #[command(name = "today")]
 struct Args {
+    #[command(subcommand)]
+    cmd: Option<Command>,
+
     #[arg(short, long, help = "Event date in MMDD format")]
     date: Option<String>,
+
+    #[arg(short, long, help = "Categories to exclude, comma-separated (a/b,c/d)")]
+    exclude: Option<String>,
+
+    #[arg(short, long, help = "No age calculation or birthday message")]
+    no_birthday: bool,
+
 }
 
 fn get_config_path(app_name: &str) -> Option<PathBuf> {
@@ -43,65 +71,139 @@ fn main() {
     env_logger::init();
 
     let args = Args::parse();
-    println!("args: {:?}", args);
+    debug!("args: {:?}", args);
 
     let month_day = if let Some(md) = args.date {
         debug!("month_day: {}", md);
-        MonthDay::from_str(&md)
+        match MonthDay::from_str(&md) {
+            Ok(d) => d,
+            Err(e) => {
+                error!("Error parsing month and day from '{}': {:?}", md, e);
+                return;
+            }
+        }
     } else {
         let today: NaiveDate = Local::now().date_naive();
         MonthDay::new(today.month(), today.day())
     };
 
-    let filter: EventFilter = FilterBuilder::new().month_day(month_day).build();
+    debug!(
+        "Using month_day: {:02}-{:02}",
+        month_day.month(),
+        month_day.day()
+    );
+    let filter: EventFilter;
+
+    if let Some(exclude_string) = args.exclude {
+        debug!("exclude_string: {}", exclude_string);
+        let exclude_categories: Vec<Category> = exclude_string
+            .split(',')
+            .map(|s| Category::from_str(s))
+            .collect();
+        debug!("exclude_categories: {:#?}", exclude_categories);
+
+        filter = FilterBuilder::new()
+            .month_day(month_day)
+            .exclude_categories(exclude_categories)
+            .build();
+    } else {
+        filter = FilterBuilder::new().month_day(month_day).build();
+    };
+
+    debug!("{:?}", filter);
+
+    if args.no_birthday {
+        info!("No birthday message will be shown");
+    } else {
+        handle_birthday();
+    }
 
     const APP_NAME: &str = "today";
-    if let Some(config_path) = get_config_path(APP_NAME) {
-        let toml_path = config_path.join(format!("{}.toml", APP_NAME));
-        info!("Looking for configuration file '{}'", &toml_path.display());
+    match get_config_path(APP_NAME) {
+        Some(path) => {
+            let toml_path = path.join(format!("{}.toml", APP_NAME));
+            info!("Looking for configuration file '{}'", &toml_path.display());
 
-        if toml_path.exists() {
-            info!("Found configuration file at '{}'", &toml_path.display());
-        } else {
-            error!(
-                "Configuration file not found at '{}'.",
-                &toml_path.display()
-            );
-            info!("Creating empty configuration file.");
-            if let Err(_) = fs::write(&toml_path, "") {
+            if toml_path.exists() {
+                info!("Found configuration file at '{}'", &toml_path.display());
+            } else {
                 error!(
-                    "Error creating empty configuration file at '{}'",
+                    "Configuration file not found at '{}'.",
                     &toml_path.display()
                 );
-                return;
+                info!("Creating empty configuration file.");
+                if let Err(_) = fs::write(&toml_path, "") {
+                    error!(
+                        "Error creating empty configuration file at '{}'",
+                        &toml_path.display()
+                    );
+                    return;
+                }
             }
-        }
 
-        let config_str = match fs::read_to_string(&toml_path) {
-            Ok(s) => s,
-            Err(e) => {
-                error!(
-                    "Error reading configuration file from '{}': {}",
-                    &toml_path.display(),
-                    e
-                );
-                return;
+            let config_str = match fs::read_to_string(&toml_path) {
+                Ok(s) => s,
+                Err(e) => {
+                    error!(
+                        "Error reading configuration file from '{}': {}",
+                        &toml_path.display(),
+                        e
+                    );
+                    return;
+                }
+            };
+            let config: Config = match toml::from_str(&config_str) {
+                Ok(c) => c,
+                Err(e) => {
+                    error!(
+                        "Error parsing configuration file from '{}': {}",
+                        &toml_path.display(),
+                        e
+                    );
+                    return;
+                }
+            };
+            match args.cmd {
+                Some(Command::Providers) => {
+                    info!("Showing providers");
+                    for provider in config.providers() {
+                        println!("{}", provider.name());
+                    }
+                }
+                Some(Command::Add {
+                    provider_name,
+                    date,
+                    description,
+                    category,
+                }) => {
+                    let category = Category::from_str(&category);
+                    let mut date_string = date;
+                    let is_yearless= date_string.starts_with("--");
+                    if is_yearless {
+                        date_string =  date_string.replace("--", "2000-");
+                    }
+                    let date = match chrono::NaiveDate::parse_from_str(&date_string, "%Y-%m-%d"){
+                        Ok(d)=> d,
+                        Err(_)=>{
+                            error!("Unable to parse date '{}'", date_string);
+                            return;
+                        }
+                    };
+                    let event = Event::new_singular(date, description, category);
+                    info!("Adding event '{}' to provider '{}'",event, provider_name);
+
+                    add_event(&config, &path, &provider_name, &event);
+                }
+                _ => {
+                    if let Err(e) = run(&config, &path, &filter) {
+                        error!("Error: {}", e);
+                        return;
+                    }
+                }
             }
-        };
-        let config: Config = match toml::from_str(&config_str) {
-            Ok(c) => c,
-            Err(e) => {
-                error!(
-                    "Error parsing configuration file from '{}': {}",
-                    &toml_path.display(),
-                    e
-                );
-                return;
-            }
-        };
-        if let Err(e) = run(&config, &config_path, &filter) {
-            error!("Error: {}", e);
-            return;
         }
-    }
+        None => {
+            error! {"Can not configure the application"}
+        }
+    };
 }

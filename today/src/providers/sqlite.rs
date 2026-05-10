@@ -1,65 +1,13 @@
 use crate::event::{Category, Event};
 use crate::filter::EventFilter;
-use crate::providers::EventProvider;
+use crate::providers::{EventProvider, EventProviderError};
 use chrono::NaiveDate;
-use log::error;
+use log::{error, debug};
 use sqlite::{Connection, State};
 use std::collections::HashMap;
+use std::fs::{File, OpenOptions};
+use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
-
-fn make_date_part(filter: &EventFilter) -> String {
-    if let Some(month_day) = filter.month_day() {
-        let md = format!("{:02}-{:02}", month_day.month(), month_day.day());
-        format!("strftime('%m-%d', event_date) = '{}'", md)
-    } else {
-        "".to_string()
-    }
-}
-fn make_category_part(filter: &EventFilter, category_map: &HashMap<i64, Category>) -> String {
-    if let Some(filter_category) = filter.category() {
-        let mut filter_category_id: Option<i64> = None;
-        // Brute force search for maching category:
-        for (category_id, category) in category_map {
-            if *category == filter_category {
-                filter_category_id = Some(*category_id);
-                break;
-            }
-        }
-        match filter_category_id {
-            Some(id) => format!("category_id = {}", id),
-            None => "".to_string(),
-        }
-    } else {
-        "".to_string()
-    }
-}
-
-fn make_text_part(filter: &EventFilter) -> String {
-    if let Some(text) = filter.text() {
-        format!("event_description LIKE '%{}%'", text)
-    } else {
-        "".to_string()
-    }
-}
-
-fn make_where_clause(filter: &EventFilter, category_map: &HashMap<i64, Category>) -> String {
-    let mut parts: Vec<String> = Vec::new();
-    if filter.contains_month_day() {
-        parts.push(make_date_part(filter));
-    }
-    if filter.contains_category() {
-        parts.push(make_category_part(filter, category_map));
-    }
-    if filter.contains_text() {
-        parts.push(make_text_part(filter));
-    }
-    let mut result = "".to_string();
-    if !parts.is_empty() {
-        result.push_str("WHERE ");
-        result.push_str(&parts.join(" AND "));
-    }
-    result
-}
 
 pub struct SQLiteProvider {
     name: String,
@@ -71,6 +19,96 @@ impl SQLiteProvider {
         Self {
             name: name.to_string(),
             path: path.to_path_buf(),
+        }
+    }
+
+    fn make_where_clause(
+        &self,
+        filter: &EventFilter,
+        category_map: &HashMap<i64, Category>,
+    ) -> String {
+        let mut parts: Vec<String> = Vec::new();
+        if filter.contains_month_day() {
+            parts.push(self.make_date_part(filter));
+        }
+        if filter.contains_category() {
+            parts.push(self.make_category_part(filter, category_map));
+        }
+        if filter.contains_exclude_categories() {
+            parts.push(self.make_exclude_categories_part(filter, category_map));
+        }
+        if filter.contains_text() {
+            parts.push(self.make_text_part(filter));
+        }
+        let mut result = "".to_string();
+        if !parts.is_empty() {
+            result.push_str("WHERE ");
+            result.push_str(&parts.join(" AND "));
+        }
+        result
+    }
+
+    fn make_date_part(&self, filter: &EventFilter) -> String {
+        if let Some(month_day) = filter.month_day() {
+            let md = format!("{:02}-{:02}", month_day.month(), month_day.day());
+            format!("strftime('%m-%d', event_date) = '{}'", md)
+        } else {
+            "".to_string()
+        }
+    }
+    fn make_category_part(
+        &self,
+        filter: &EventFilter,
+        category_map: &HashMap<i64, Category>,
+    ) -> String {
+        if let Some(filter_category) = filter.category() {
+            let mut filter_category_id: Option<i64> = None;
+            // Brute force search for maching category:
+            for (category_id, category) in category_map {
+                if *category == filter_category {
+                    filter_category_id = Some(*category_id);
+                    break;
+                }
+            }
+            match filter_category_id {
+                Some(id) => format!("category_id = {}", id),
+                None => "".to_string(),
+            }
+        } else {
+            "".to_string()
+        }
+    }
+
+    fn make_exclude_categories_part(
+        &self,
+        filter: &EventFilter,
+        category_map: &HashMap<i64, Category>,
+    ) -> String {
+        if let Some(exclude_categories) = filter.exclude_categories() {
+            let mut exclude_ids: Vec<String> = Vec::new();
+            for exclude_category in exclude_categories {
+                for (category_id, category) in category_map {
+                    if *category == exclude_category {
+                        exclude_ids.push(category_id.to_string());
+                        break;
+                    }
+                }
+            }
+            if !exclude_ids.is_empty() {
+                format!("category_id NOT IN ({})", exclude_ids.join(", "))
+            } else {
+                "".to_string()
+            }
+        } else {
+            "".to_string()
+        }
+    }
+
+    fn make_text_part(&self, filter: &EventFilter) -> String {
+        if let Some(text) = filter.text() {
+            format!("event_description LIKE '%{}%'", text)
+        } else {
+            "".to_string()
         }
     }
 
@@ -96,6 +134,7 @@ impl SQLiteProvider {
             };
             category_map.insert(category_id, category);
         }
+        debug!("Got category map: {:#?}", category_map);
         category_map
     }
 }
@@ -114,7 +153,7 @@ impl EventProvider for SQLiteProvider {
             }
         };
         let category_map = self.get_categories(&connection);
-        let where_clause = make_where_clause(filter, &category_map);
+        let where_clause = self.make_where_clause(filter, &category_map);
         let mut event_query: String = "SELECT event_date, event_description, category_id FROM
  event"
             .to_string();
@@ -169,6 +208,14 @@ impl EventProvider for SQLiteProvider {
                 category.clone(),
             ));
         }
+    }
+
+    fn add_event(&self, _event: &Event) -> Result<(), EventProviderError> {
+        return Err(EventProviderError::OperationNotSupported);
+    }
+
+    fn add_is_supported(&self) -> bool {
+        false
     }
 }
 
@@ -301,6 +348,26 @@ mod tests {
     }
 
     #[test]
+    fn successfull_read_events_with_exclude_category_filter() {
+        let path = Path::new("test_temp6.db");
+
+        setup_test_db(path);
+
+        let mut events: Vec<Event> = Vec::new();
+        let provider = SQLiteProvider::new("test", path);
+        let category = Category::new("programming", "technology");
+        let filter = FilterBuilder::new().exclude_categories(vec![category]).build();
+        provider.get_events(&filter, &mut events);
+
+        let _ = fs::remove_file(path);
+        let test_events = get_test_events();
+
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0], test_events[0]);
+        assert_eq!(events[1], test_events[2]);
+    }
+
+    #[test]
     fn successfull_read_events_with_date_filter() {
         let path = Path::new("test_temp3.db");
 
@@ -371,7 +438,7 @@ mod tests {
         let provider = SQLiteProvider::new("test", path);
         let filter = FilterBuilder::new().build();
         provider.get_events(&filter, &mut events);
+        let _ = std::fs::remove_file(&path);
         assert_eq!(events.len(), 0);
-        let _ = fs::remove_file(path);
     }
 }

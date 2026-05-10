@@ -1,28 +1,40 @@
 use std::error::Error;
 
-mod birthday;
-pub mod event;
-mod providers;
-pub mod filter;
 
-use filter::EventFilter;
-use birthday::handle_birthday;
+pub mod event;
+pub mod filter;
+pub mod providers;
+
 use event::Event;
+use filter::EventFilter;
 use log::{error, info};
 use providers::{CSVFileProvider, EventProvider, SQLiteProvider, TextFileProvider, WebProvider};
 use std::path::Path;
 
 use serde::Deserialize;
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct ProviderConfig {
     name: String,
     kind: String,
     resource: String,
 }
+
+impl ProviderConfig {
+    pub fn name(&self) -> String {
+        self.name.clone()
+    }
+}
+
 #[derive(Deserialize, Debug)]
 pub struct Config {
     providers: Vec<ProviderConfig>,
+}
+
+impl Config {
+    pub fn providers(&self) -> Vec<ProviderConfig> {
+        self.providers.clone()
+    }
 }
 
 fn create_providers(config: &Config, config_path: &Path) -> Vec<Box<dyn EventProvider>> {
@@ -59,7 +71,6 @@ pub fn run(
     config_path: &Path,
     filter: &EventFilter,
 ) -> Result<(), Box<dyn Error>> {
-    handle_birthday();
     let mut events: Vec<Event> = Vec::new();
     let providers = create_providers(config, config_path);
     let mut count = 0;
@@ -77,4 +88,32 @@ pub fn run(
         println!("{}", event);
     }
     Ok(())
+}
+
+pub fn add_event(config: &Config, config_path: &Path, provider_name: &str, event: &Event) {
+    let providers = create_providers(config, config_path);
+
+    // Find provider by name
+    let mut provider: Option<&dyn EventProvider> = None;
+    for p in &providers {
+        if p.name() == provider_name {
+            provider = Some(p.as_ref());
+            break;
+        }
+    }
+
+    match provider {
+        Some(p) => {
+            if p.add_is_supported() {
+                if let Err(_e) = p.add_event(event){
+                    error!("Unable to add event");
+                }
+            } else {
+                error!("Adding events is not supported for provider '{}'", p.name());
+            }
+        }
+        None => {
+            error!("Unknown event provider '{}'", provider_name);
+        }
+    }
 }

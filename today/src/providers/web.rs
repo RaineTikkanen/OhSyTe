@@ -1,6 +1,6 @@
 use crate::event::{Category, Event};
 use crate::filter::EventFilter;
-use crate::providers::EventProvider;
+use crate::providers::{EventProvider, EventProviderError};
 use chrono::NaiveDate;
 use log::{error, info};
 use reqwest::{blocking::Client, blocking::Response};
@@ -65,5 +65,9 @@ impl EventProvider for WebProvider {
                 events.push(event);
             }
         }
+    }
+
+    fn add_event(&self, _event: &Event) -> Result<(), EventProviderError> {
+        return Err(EventProviderError::OperationNotSupported);
     }
 }

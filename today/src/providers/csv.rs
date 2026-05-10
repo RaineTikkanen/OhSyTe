@@ -1,10 +1,11 @@
-use crate::event::{Category, Event, MonthDay};
+use crate::event::{Category, Event, EventKind, MonthDay};
 use crate::filter::EventFilter;
-use crate::providers::EventProvider;
-
+use crate::providers::{EventProvider, EventProviderError};
 use chrono::{Datelike, Local, NaiveDate};
 use csv::ReaderBuilder;
 use log::{debug, error, trace};
+use std::fs::{File, OpenOptions};
+use std::io::{self, BufRead, BufReader, BufWriter, Write, ErrorKind};
 use std::path::{Path, PathBuf};
 
 pub struct CSVFileProvider {
@@ -48,11 +49,11 @@ impl EventProvider for CSVFileProvider {
 
             let mut date_string = record[0].to_string();
             let is_yearless = date_string.starts_with("--");
+
             if is_yearless {
-                let today: NaiveDate = Local::now().date_naive();
-                let year_string = format!("{:04}-", today.year());
-                date_string = date_string.replace("--", &year_string);
+                date_string = date_string.replace("--", "2000-");
             }
+            
             let description = record[1].to_string();
             let category_string = record[2].to_string();
 
@@ -79,6 +80,54 @@ impl EventProvider for CSVFileProvider {
             }
         }
     }
+
+    fn add_event(&self, event: &Event) -> Result<(), EventProviderError> {
+        debug!("Adding event to provider '{}'", self.name);
+        let file = match OpenOptions::new().append(true).open(self.path.clone()) {
+            Ok(f) => f,
+            Err(e) => {
+                error!{"Error: {:?}", e};
+                match e.kind(){
+                    ErrorKind::PermissionDenied => error!("No write permission to file '{:?}.", self.path.clone()),
+                    ErrorKind::NotFound => error!("File '{:?}' not found", self.path.clone()),
+                    _=> error!("Unknown error while adding event to file '{:?}", self.path.clone()),
+                };
+                return Err(EventProviderError::OperationFailed)
+            },
+        };
+
+        let mut writer = BufWriter::new(file);
+
+        return match event.kind() {
+            EventKind::Singular(date) => {
+                let result = writeln!(
+                    writer,
+                    "{},{},{}",
+                    date.to_string(),
+                    event.description(),
+                    event.category()
+                );
+                debug!("Write result: {:?}", result);
+                Ok(())
+            }
+            EventKind::Annual(month_day) => {
+                let result = writeln!(
+                    writer,
+                    "--{},{},{}",
+                    month_day.to_string(),
+                    event.description(),
+                    event.category()
+                );
+                debug!("Write result: {:?}", result);
+
+                Ok(())
+            }
+        };
+    }
+
+    fn add_is_supported(&self) -> bool {
+        true
+    }
 }
 
 #[cfg(test)]
@@ -94,8 +143,8 @@ mod tests {
 
         let mut file = File::create(path).unwrap();
         writeln!(file, "2024-01-01,Event 1,testing").unwrap();
-        writeln!(file, "2024-02-14,Event 2,testing").unwrap();
-        writeln!(file, "--02-14,Annual Event,Annual").unwrap();
+        writeln!(file, "2024-02-14,Event 2,testing/test").unwrap();
+        writeln!(file, "--02-14,Annual Event,annual/event").unwrap();
     }
 
     fn get_test_events() -> [Event; 3] {
@@ -108,12 +157,12 @@ mod tests {
             Event::new_singular(
                 NaiveDate::from_ymd_opt(2024, 2, 14).unwrap(),
                 String::from("Event 2"),
-                Category::from_primary("testing"),
+                Category::new("testing", "test"),
             ),
             Event::new_annual(
                 MonthDay::new(2, 14),
                 String::from("Annual Event"),
-                Category::from_primary("Annual"),
+                Category::new("annual", "event"),
             ),
         ];
     }
@@ -126,6 +175,7 @@ mod tests {
         let filter = FilterBuilder::new().build();
         let mut events = Vec::new();
         provider.get_events(&filter, &mut events);
+        let _ = std::fs::remove_file(&path);
 
         let test_events = get_test_events();
 
@@ -133,11 +183,10 @@ mod tests {
         assert_eq!(events[0], test_events[0]);
         assert_eq!(events[1], test_events[1]);
         assert_eq!(events[2], test_events[2]);
-        let _ = std::fs::remove_file(&path);
     }
 
     #[test]
-    fn test_csv_provider_with_category_filter() {
+    fn test_csv_provider_with_primary_category_filter() {
         let path = Path::new("test_csv_2.csv");
         create_test_csv_file(&path);
         let provider = CSVFileProvider::new("Test CSV Provider", &path);
@@ -145,29 +194,86 @@ mod tests {
         let filter = FilterBuilder::new().category(category).build();
         let mut events = Vec::new();
         provider.get_events(&filter, &mut events);
+        let _ = std::fs::remove_file(&path);
 
         let test_events = get_test_events();
 
-        assert_eq!(events.len(), 2);
+        assert_eq!(events.len(), 1);
         assert_eq!(events[0], test_events[0]);
-        assert_eq!(events[1], test_events[1]);
-
-        let _ = std::fs::remove_file(&path);
     }
 
     #[test]
-    fn test_csv_provider_with_text_filter() {
+    fn test_csv_provider_with_full_category_filter() {
         let path = Path::new("test_csv_3.csv");
         create_test_csv_file(&path);
         let provider = CSVFileProvider::new("Test CSV Provider", &path);
-        let filter = FilterBuilder::new().text("Annual".to_string()).build();
+        let category = Category::new("annual","event");
+        let filter = FilterBuilder::new().category(category).build();
         let mut events = Vec::new();
         provider.get_events(&filter, &mut events);
+        let _ = std::fs::remove_file(&path);
 
         let test_events = get_test_events();
 
         assert_eq!(events.len(), 1);
         assert_eq!(events[0], test_events[2]);
+
+    }
+
+    #[test]
+    fn test_csv_provider_with_text_filter() {
+        let path = Path::new("test_csv_4.csv");
+        create_test_csv_file(&path);
+        let provider = CSVFileProvider::new("Test CSV Provider", &path);
+        let filter = FilterBuilder::new().text("Annual".to_string()).build();
+        let mut events = Vec::new();
+        provider.get_events(&filter, &mut events);
         let _ = std::fs::remove_file(&path);
+
+        let test_events = get_test_events();
+
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0], test_events[2]);
+    }
+
+    #[test]
+    fn adds_singular_event_to_csv_file() {
+        let path = Path::new("test_events_add_singular.csv");
+        create_test_csv_file(path);
+        let provider = CSVFileProvider::new("TestProvider", path);
+        let event = Event::new_singular(
+            NaiveDate::from_ymd_opt(2024, 3, 5).unwrap(),
+            String::from("Added Event"),
+            Category::new("testing", "addition"),
+        );
+        _ = provider.add_event(&event);
+
+        let mut events: Vec<Event> = Vec::new();
+        let filter = FilterBuilder::new().build();
+        provider.get_events(&filter, &mut events);
+        let _ = std::fs::remove_file(&path);
+
+        assert_eq!(events.len(), 4);
+        assert_eq!(events[3], event);
+    }
+
+    #[test]
+    fn adds_annual_event_to_csv_file() {
+        let path = Path::new("test_events_add_annual.csv");
+        create_test_csv_file(path);
+        let provider = CSVFileProvider::new("TestProvider", path);
+        let event = Event::new_annual(
+            MonthDay::new(3, 5),
+            String::from("Added Annual Event"),
+            Category::new("testing", "addition"),
+        );
+        _ = provider.add_event(&event);
+
+        let mut events: Vec<Event> = Vec::new();
+        let filter = FilterBuilder::new().build();
+        provider.get_events(&filter, &mut events);
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(events.len(), 4);
+        assert_eq!(events[3], event);
     }
 }
