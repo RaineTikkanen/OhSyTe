@@ -157,7 +157,7 @@ mod tests {
     fn create_test_txt_file(path: &Path) {
         let content = "2024-01-01
 Event 1
-testing
+testing/test
 
 2024-02-14
 Event 2
@@ -176,7 +176,7 @@ Annual
             Event::new_singular(
                 NaiveDate::from_ymd_opt(2024, 1, 1).unwrap(),
                 String::from("Event 1"),
-                Category::from_primary("testing"),
+                Category::new("testing", "test"),
             ),
             Event::new_singular(
                 NaiveDate::from_ymd_opt(2024, 2, 14).unwrap(),
@@ -208,18 +208,32 @@ Annual
     }
 
     #[test]
-    fn reads_events_from_text_file_with_category_filter() {
+    fn reads_events_from_text_file_with_primary_category_filter() {
         let path = Path::new("test_events_category_filter.txt");
         create_test_txt_file(path);
         let provider = TextFileProvider::new("TestProvider", path);
         let category = Category::from_primary("testing");
-        let filter = FilterBuilder::new().category(category).build();
+        let filter = FilterBuilder::new().categories(vec![category]).build();
         let mut events: Vec<Event> = Vec::new();
         provider.get_events(&filter, &mut events);
         let _ = std::fs::remove_file(&path);
         assert_eq!(events.len(), 2);
-        assert_eq!(events[0].category(), Category::from_primary("testing"));
+        assert_eq!(events[0].category(), Category::new("testing", "test"));
         assert_eq!(events[1].category(), Category::from_primary("testing"));
+    }
+
+    #[test]
+    fn reads_events_from_text_file_with_exact_category_filter() {
+        let path = Path::new("test_events_secondary_category_filter.txt");
+        create_test_txt_file(path);
+        let provider = TextFileProvider::new("TestProvider", path);
+        let category = Category::new("testing", "test");
+        let filter = FilterBuilder::new().categories(vec![category]).build();
+        let mut events: Vec<Event> = Vec::new();
+        provider.get_events(&filter, &mut events);
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].category(), Category::new("testing", "test"));
     }
 
     #[test]

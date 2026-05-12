@@ -44,6 +44,8 @@ struct Args {
     #[arg(short, long, help = "No age calculation or birthday message")]
     no_birthday: bool,
 
+    #[arg(short, long, help ="Event categories, comma-separated(a/b,c/d")]
+    categories: Option<String>,
 }
 
 fn get_config_path(app_name: &str) -> Option<PathBuf> {
@@ -93,22 +95,39 @@ fn main() {
         month_day.day()
     );
     let filter: EventFilter;
+    let exclude_categories: Vec<Category>;
+    let categories: Vec<Category>;
+
+     fn handle_categories(categories_string: &str) -> Vec<Category> {
+        categories_string
+            .split(',')
+            .map(|s| Category::from_str(s))
+            .collect()
+
+     }
 
     if let Some(exclude_string) = args.exclude {
         debug!("exclude_string: {}", exclude_string);
-        let exclude_categories: Vec<Category> = exclude_string
-            .split(',')
-            .map(|s| Category::from_str(s))
-            .collect();
-        debug!("exclude_categories: {:#?}", exclude_categories);
-
-        filter = FilterBuilder::new()
-            .month_day(month_day)
-            .exclude_categories(exclude_categories)
-            .build();
+        exclude_categories = handle_categories(&exclude_string);
     } else {
-        filter = FilterBuilder::new().month_day(month_day).build();
-    };
+        exclude_categories = Vec::new();
+    }
+    
+    debug!("exclude_categories: {:#?}", exclude_categories);
+
+    if let Some(categories_string)=args.categories {
+        debug!("categories_string: {}", categories_string);
+        categories = handle_categories(&categories_string);
+        debug!("categories: {:?}", categories);
+    } else {
+        categories = Vec::new();
+    }
+
+    filter = FilterBuilder::new()
+        .month_day(month_day)
+        .exclude_categories(exclude_categories)
+        .categories(categories)
+        .build();
 
     debug!("{:?}", filter);
 
@@ -178,19 +197,19 @@ fn main() {
                 }) => {
                     let category = Category::from_str(&category);
                     let mut date_string = date;
-                    let is_yearless= date_string.starts_with("--");
+                    let is_yearless = date_string.starts_with("--");
                     if is_yearless {
-                        date_string =  date_string.replace("--", "2000-");
+                        date_string = date_string.replace("--", "2000-");
                     }
-                    let date = match chrono::NaiveDate::parse_from_str(&date_string, "%Y-%m-%d"){
-                        Ok(d)=> d,
-                        Err(_)=>{
+                    let date = match chrono::NaiveDate::parse_from_str(&date_string, "%Y-%m-%d") {
+                        Ok(d) => d,
+                        Err(_) => {
                             error!("Unable to parse date '{}'", date_string);
                             return;
                         }
                     };
                     let event = Event::new_singular(date, description, category);
-                    info!("Adding event '{}' to provider '{}'",event, provider_name);
+                    info!("Adding event '{}' to provider '{}'", event, provider_name);
 
                     add_event(&config, &path, &provider_name, &event);
                 }

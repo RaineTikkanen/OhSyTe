@@ -190,16 +190,17 @@ mod tests {
         let path = Path::new("test_csv_2.csv");
         create_test_csv_file(&path);
         let provider = CSVFileProvider::new("Test CSV Provider", &path);
-        let category = Category::from_primary("testing");
-        let filter = FilterBuilder::new().category(category).build();
+        let categories = vec![Category::from_primary("testing")];
+        let filter = FilterBuilder::new().categories(categories).build();
         let mut events = Vec::new();
         provider.get_events(&filter, &mut events);
         let _ = std::fs::remove_file(&path);
 
         let test_events = get_test_events();
 
-        assert_eq!(events.len(), 1);
+        assert_eq!(events.len(), 2);
         assert_eq!(events[0], test_events[0]);
+        assert_eq!(events[1], test_events[1]);
     }
 
     #[test]
@@ -207,8 +208,8 @@ mod tests {
         let path = Path::new("test_csv_3.csv");
         create_test_csv_file(&path);
         let provider = CSVFileProvider::new("Test CSV Provider", &path);
-        let category = Category::new("annual","event");
-        let filter = FilterBuilder::new().category(category).build();
+        let categories = vec![Category::new("annual","event")];
+        let filter = FilterBuilder::new().categories(categories).build();
         let mut events = Vec::new();
         provider.get_events(&filter, &mut events);
         let _ = std::fs::remove_file(&path);

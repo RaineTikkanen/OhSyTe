@@ -51,11 +51,24 @@ impl EventProvider for WebProvider {
             error!("Error while retrieving data: {:#?}", request.err());
             return;
         } else {
-            response = request.ok().unwrap();
+            response = match request.ok() {
+                Some(r) => r,
+                None => {
+                    info!{"Got empty response from web provider '{}'", self.name()};
+                    return;
+                }
+            };
+
         }
 
-        let json_events = response.json::<Vec<JSONEvent>>().unwrap();
-        info!("Got {} events from JSON", json_events.len());
+        let json_events = match response.json::<Vec<JSONEvent>>() {
+            Ok(j) => j,
+            Err(e) => {
+                error!("Error while parsing JSON: {:#?}", e);
+                return;
+            }
+        };
+        info!("Got {} events from web provider '{}'", json_events.len(), self.name());
 
         for json_event in json_events {
             let date = NaiveDate::parse_from_str(&json_event.date, "%F").unwrap();

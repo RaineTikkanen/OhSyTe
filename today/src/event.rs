@@ -164,6 +164,14 @@ impl Category {
             }
         }
     }
+    
+    pub fn primary(&self) -> String {
+        self.primary.clone()
+    }
+
+    pub fn secondary(&self) -> Option<String> {
+        self.secondary.clone()
+    }
 }
 
 impl fmt::Display for Category {
