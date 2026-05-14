@@ -38,13 +38,21 @@ struct Args {
     #[arg(short, long, help = "Event date in MMDD format")]
     date: Option<String>,
 
-    #[arg(short, long, help = "Categories to exclude, comma-separated a/b,c/d, \nExact match: [primary/secondary], Either primary or secondary: [category], Only primary: [primary/*]")] 
+    #[arg(
+        short,
+        long,
+        help = "Categories to exclude, comma-separated a/b,c/d, \nExact match: [primary/secondary], Either primary or secondary: [category], Only primary: [primary/*]"
+    )]
     exclude: Option<String>,
 
     #[arg(short, long, help = "No age calculation or birthday message")]
     no_birthday: bool,
 
-    #[arg(short, long, help = "Event categories to search, comma-separated a/b,c,d/*, \nExact match: [primary/secondary], Either primary or secondary: [category], Only primary: [primary/*]")]
+    #[arg(
+        short,
+        long,
+        help = "Event categories to search, comma-separated a/b,c,d/*, \nExact match: [primary/secondary], Either primary or secondary: [category], Only primary: [primary/*]"
+    )]
     categories: Option<String>,
 
     #[arg(short, long, help = "Text to search from events")]

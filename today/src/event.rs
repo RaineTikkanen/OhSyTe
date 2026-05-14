@@ -1,6 +1,6 @@
 use std::fmt;
 
-use chrono::{Datelike, Local, NaiveDate, Weekday, Month};
+use chrono::{Datelike, Local, Month, NaiveDate, Weekday as ChronoWeekday};
 use log::debug;
 use std::str::FromStr;
 use strum_macros::EnumString;
@@ -10,24 +10,6 @@ pub enum EventKind {
     Singular(NaiveDate),
     Annual(MonthDay),
     RuleBased(Rule),
-}
-
-#[derive(Debug, PartialEq, Clone)]
-struct Rule {
- ordinal: Ordinal,
- weekday: Weekday,
- month: Month,
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, EnumString)]
-#[strum(ascii_case_insensitive)]
-enum Ordinal {
- First = 1,
- Second = 2,
- Third = 3,
- Fourth = 4,
- Fifth = 5,
- Last = 6,
 }
 
 #[derive(Debug, PartialEq)]
@@ -64,12 +46,20 @@ impl Event {
         }
     }
 
+    pub fn new_rule_based(rule: Rule, description: String, category: Category) -> Self {
+        Self {
+            kind: EventKind::RuleBased(rule),
+            description,
+            category,
+        }
+    }
+
     pub fn year(&self) -> i32 {
         let today: NaiveDate = Local::now().date_naive();
         match &self.kind {
             EventKind::Singular(date) => date.year(),
             EventKind::Annual(_month_day) => today.year(),
-            EventKind::RuleBased(_rule) => todo!("Rule-based events not implemented yet"),
+            EventKind::RuleBased(_rule) => today.year(),
         }
     }
 
@@ -83,7 +73,10 @@ impl Event {
                 month: month_day.month,
                 day: month_day.day,
             },
-            EventKind::RuleBased(_rule) => todo!("Rule-based events not implemented yet"),
+            EventKind::RuleBased(rule) => {
+                let month_day = Rule::month_day(rule).unwrap();
+                month_day
+            }
         }
     }
 }
@@ -230,6 +223,156 @@ impl fmt::Display for Category {
     }
 }
 
+#[derive(Debug, Clone, Copy, Eq, Ord, PartialEq, PartialOrd, EnumString)]
+#[strum(ascii_case_insensitive)]
+pub enum Weekday {
+    Monday = 0,
+    Tuesday = 1,
+    Wednesday = 2,
+    Thursday = 3,
+    Friday = 4,
+    Saturday = 5,
+    Sunday = 6,
+}
+
+impl Weekday {
+    pub fn as_chrono_weekday(&self) -> ChronoWeekday {
+        match *self {
+            Weekday::Monday => ChronoWeekday::Mon,
+            Weekday::Tuesday => ChronoWeekday::Tue,
+            Weekday::Wednesday => ChronoWeekday::Wed,
+            Weekday::Thursday => ChronoWeekday::Thu,
+            Weekday::Friday => ChronoWeekday::Fri,
+            Weekday::Saturday => ChronoWeekday::Sat,
+            Weekday::Sunday => ChronoWeekday::Sun,
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct Rule {
+    ordinal: Ordinal,
+    weekday: Weekday,
+    month: Month,
+}
+
+#[derive(Debug)]
+pub enum RuleParseError {
+    InvalidFormat,
+    InvalidOrdinal,
+    InvalidWeekday,
+    InvalidMonth,
+}
+
+impl Rule {
+    pub fn parse(rule_string: &str) -> Result<Self, RuleParseError> {
+        let parts: Vec<String> = rule_string
+            .to_lowercase()
+            .split_whitespace()
+            .map(str::to_string)
+            .collect();
+
+        if parts.len() != 4 {
+            return Err(RuleParseError::InvalidFormat);
+        }
+
+        let ordinal = match Ordinal::from_str(&parts[0]) {
+            Ok(ord) => ord,
+            Err(e) => {
+                return Err(RuleParseError::InvalidOrdinal);
+            }
+        };
+
+        let weekday = match Weekday::from_str(&parts[1]) {
+            Ok(wd) => wd,
+            Err(e) => {
+                return Err(RuleParseError::InvalidWeekday);
+            }
+        };
+
+        if parts[2] != "in" && parts[2] != "of" {
+            return Err(RuleParseError::InvalidFormat);
+        }
+
+        let month = match parts[3].parse::<Month>() {
+            Ok(m) => m,
+            Err(e) => {
+                return Err(RuleParseError::InvalidMonth);
+            }
+        };
+
+        Ok(Self {
+            ordinal,
+            weekday,
+            month,
+        })
+    }
+
+    pub fn resolve_date(&self, year: i32) -> Option<NaiveDate> {
+        if self.ordinal == Ordinal::Last {
+            last_weekday_in_month(year, self.month, self.weekday)
+        } else {
+            nth_weekday_in_month(year, self.month, self.weekday, self.ordinal)
+        }
+    }
+
+    pub fn month_day(&self) -> Option<MonthDay> {
+        if let Some(date) = self.resolve_date(self.year()) {
+            Some(MonthDay {
+                month: date.month(),
+                day: date.day(),
+            })
+        } else {
+            None
+        }
+    }
+
+    pub fn year(&self) -> i32 {
+        Local::now().year()
+    }
+}
+
+fn nth_weekday_in_month(
+    year: i32,
+    month: Month,
+    weekday: Weekday,
+    ordinal: Ordinal,
+) -> Option<NaiveDate> {
+    let mut count = 0;
+    for day in 1..=31 {
+        if let Some(date) = NaiveDate::from_ymd_opt(year, month.number_from_month(), day) {
+            if date.weekday() == weekday.as_chrono_weekday() {
+                count += 1;
+                if count == ordinal as i32 {
+                    return Some(date);
+                }
+            }
+        }
+    }
+    None
+}
+
+fn last_weekday_in_month(year: i32, month: Month, weekday: Weekday) -> Option<NaiveDate> {
+    for day in (1..=31).rev() {
+        if let Some(date) = NaiveDate::from_ymd_opt(year, month.number_from_month(), day) {
+            if date.weekday() == weekday.as_chrono_weekday() {
+                return Some(date);
+            }
+        }
+    }
+    None
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, EnumString)]
+#[strum(ascii_case_insensitive)]
+enum Ordinal {
+    First = 1,
+    Second = 2,
+    Third = 3,
+    Fourth = 4,
+    Last = 5,
+}
+
 #[cfg(test)]
 mod tests {
     use chrono::Month;
@@ -323,5 +466,109 @@ mod tests {
         let category = Category::from_str("testing/test");
         assert_eq!(category.primary(), "testing");
         assert_eq!(category.secondary(), Some("test".to_string()));
+    }
+
+    #[test]
+    fn last_weekday_in_month_function_works() {
+        let date = last_weekday_in_month(2024, Month::January, Weekday::Monday).unwrap();
+        assert_eq!(date, NaiveDate::from_ymd_opt(2024, 1, 29).unwrap());
+
+        let date = last_weekday_in_month(2024, Month::March, Weekday::Tuesday).unwrap();
+        assert_eq!(date, NaiveDate::from_ymd_opt(2024, 3, 26).unwrap());
+
+        let date = last_weekday_in_month(2018, Month::August, Weekday::Thursday).unwrap();
+        assert_eq!(date, NaiveDate::from_ymd_opt(2018, 8, 30).unwrap());
+    }
+
+    #[test]
+    fn nth_weekday_in_month_function_works() {
+        let date =
+            nth_weekday_in_month(2001, Month::January, Weekday::Monday, Ordinal::First).unwrap();
+        assert_eq!(date, NaiveDate::from_ymd_opt(2001, 1, 1).unwrap());
+
+        let date =
+            nth_weekday_in_month(1967, Month::March, Weekday::Tuesday, Ordinal::Second).unwrap();
+        assert_eq!(date, NaiveDate::from_ymd_opt(1967, 3, 14).unwrap());
+
+        let date =
+            nth_weekday_in_month(1999, Month::August, Weekday::Thursday, Ordinal::Third).unwrap();
+        assert_eq!(date, NaiveDate::from_ymd_opt(1999, 8, 19).unwrap());
+
+        let date =
+            nth_weekday_in_month(1987, Month::January, Weekday::Monday, Ordinal::Fourth).unwrap();
+        assert_eq!(date, NaiveDate::from_ymd_opt(1987, 1, 26).unwrap());
+    }
+
+    #[test]
+    fn rule_parsing_works() {
+        let rule = Rule::parse("first Monday in January").unwrap();
+        assert_eq!(rule.ordinal, Ordinal::First);
+        assert_eq!(rule.weekday, Weekday::Monday);
+        assert_eq!(rule.month, Month::January);
+
+        let rule = Rule::parse("second Tuesday of March").unwrap();
+        assert_eq!(rule.ordinal, Ordinal::Second);
+        assert_eq!(rule.weekday, Weekday::Tuesday);
+        assert_eq!(rule.month, Month::March);
+
+        let rule = Rule::parse("third Thursday in August").unwrap();
+        assert_eq!(rule.ordinal, Ordinal::Third);
+        assert_eq!(rule.weekday, Weekday::Thursday);
+        assert_eq!(rule.month, Month::August);
+
+        let rule = Rule::parse("fourth Monday in January").unwrap();
+        assert_eq!(rule.ordinal, Ordinal::Fourth);
+        assert_eq!(rule.weekday, Weekday::Monday);
+        assert_eq!(rule.month, Month::January);
+
+        let rule = Rule::parse("last Monday in January").unwrap();
+        assert_eq!(rule.ordinal, Ordinal::Last);
+        assert_eq!(rule.weekday, Weekday::Monday);
+        assert_eq!(rule.month, Month::January);
+    }
+
+    #[test]
+    fn rule_parsing_rejects_invalid_ordinal() {
+        Rule::parse("firstest Monday in January").unwrap_err();
+    }
+
+    #[test]
+    fn rule_parsing_rejects_invalid_weekday() {
+        Rule::parse("first Monaday in January").unwrap_err();
+    }
+
+    #[test]
+    fn rule_parsing_rejects_invalid_month() {
+        Rule::parse("first Monday in Janury").unwrap_err();
+    }
+
+    #[test]
+    fn rule_parsing_rejects_invalid_format() {
+        Rule::parse("firstMondayinJanuary").unwrap_err();
+        Rule::parse("first Monday January").unwrap_err();
+        Rule::parse("Monday in January").unwrap_err();
+    }
+
+    #[test]
+    fn rule_parsing_accepts_valid_rules() {
+        let rule = Rule::parse("first Monday in January").unwrap();
+        let date = rule.resolve_date(2024).unwrap();
+        assert_eq!(date, NaiveDate::from_ymd_opt(2024, 1, 1).unwrap());
+
+        let rule = Rule::parse("second Tuesday of March").unwrap();
+        let date = rule.resolve_date(2024).unwrap();
+        assert_eq!(date, NaiveDate::from_ymd_opt(2024, 3, 12).unwrap());
+
+        let rule = Rule::parse("third Thursday in August").unwrap();
+        let date = rule.resolve_date(2024).unwrap();
+        assert_eq!(date, NaiveDate::from_ymd_opt(2024, 8, 15).unwrap());
+
+        let rule = Rule::parse("fourth Monday in January").unwrap();
+        let date = rule.resolve_date(2024).unwrap();
+        assert_eq!(date, NaiveDate::from_ymd_opt(2024, 1, 22).unwrap());
+
+        let rule = Rule::parse("last Monday in January").unwrap();
+        let date = rule.resolve_date(2024).unwrap();
+        assert_eq!(date, NaiveDate::from_ymd_opt(2024, 1, 29).unwrap());
     }
 }

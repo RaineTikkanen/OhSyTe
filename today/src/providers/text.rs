@@ -1,4 +1,4 @@
-use crate::event::{Category, Event, EventKind, MonthDay};
+use crate::event::{Category, Event, EventKind, MonthDay, Rule};
 use crate::filter::EventFilter;
 use crate::providers::{EventProvider, EventProviderError};
 use chrono::{Datelike, NaiveDate};
@@ -72,29 +72,50 @@ impl EventProvider for TextFileProvider {
                     state = ReadingState::Separator;
                 }
                 ReadingState::Separator => {
+                    let category = Category::from_str(&category_string);
+                    let is_rule_based = !date_string.contains("-");
                     let is_yearless = date_string.starts_with("--");
                     if is_yearless {
                         date_string = date_string.replace("--", "2000-");
                     }
                     let event: Event;
-                    match NaiveDate::parse_from_str(&date_string, "%F") {
-                        Ok(date) => {
-                            let category = Category::from_str(&category_string);
-                            if is_yearless {
-                                event = Event::new_annual(
-                                    MonthDay::new(date.month(), date.day()).unwrap(),
-                                    description.clone(),
-                                    category,
-                                );
-                            } else {
-                                event = Event::new_singular(date, description.clone(), category);
+
+                    if is_rule_based {
+                        println!("Parsing rule-based event with date string '{}'", date_string);
+                        let rule = match Rule::parse(&date_string) {
+                            Ok(r) => r,
+                            Err(e) => {
+                                error!("Error parsing rule from '{}': {:?}", date_string, e);
+                                continue;
                             }
-                            if filter.accepts(&event) {
-                                events.push(event);
+                        };
+                        event = Event::new_rule_based(rule, description.clone(), category);
+                        println!("Parsed rule-based event: {}", event);
+                        
+                        if filter.accepts(&event) {
+                                    events.push(event);
+                                }
+                        
+                    } else {
+                        match NaiveDate::parse_from_str(&date_string, "%F") {
+                            Ok(date) => {
+                                if is_yearless {
+                                    event = Event::new_annual(
+                                        MonthDay::new(date.month(), date.day()).unwrap(),
+                                        description.clone(),
+                                        category,
+                                    );
+                                } else {
+                                    event =
+                                        Event::new_singular(date, description.clone(), category);
+                                }
+                                if filter.accepts(&event) {
+                                    events.push(event);
+                                }
                             }
-                        }
-                        Err(_) => {
-                            error!("Invalid timestamp '{}'", date_string);
+                            Err(_) => {
+                                error!("Invalid timestamp '{}'", date_string);
+                            }
                         }
                     }
                     state = ReadingState::Date;
@@ -143,8 +164,8 @@ impl EventProvider for TextFileProvider {
                     event.category()
                 );
                 Ok(())
-            },
-            EventKind::RuleBased(_rule) => todo!("Rule-based events not implemented yet"),
+            }
+            EventKind::RuleBased(_) => todo!("Rule-based events not implemented yet"),
         };
     }
 
@@ -159,7 +180,6 @@ mod tests {
     use super::*;
     use crate::filter::FilterBuilder;
 
-    //Funktion tekemisessä hyödynnetty tekoälyä
     fn create_test_txt_file(path: &Path) {
         let content = "2024-01-01
 Event 1

@@ -128,7 +128,7 @@ impl EventProvider for CSVFileProvider {
 
                 Ok(())
             }
-            EventKind::RuleBased(_rule) => todo!("Rule-based events not implemented yet"),
+            EventKind::RuleBased(_) => todo!("Rule-based events not implemented yet"),
         };
     }
 

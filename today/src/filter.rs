@@ -32,13 +32,11 @@ impl EventFilter {
             Some(s) if s == "*" => filter_category.primary() == event_category.primary(),
             Some(_) => filter_category == event_category,
             None => match event_category.secondary() {
-                Some(event_secondary) => 
+                Some(event_secondary) => {
                     filter_category.primary() == event_category.primary()
-                        || filter_category.primary() == event_secondary,
-                None => 
-                    filter_category.primary() == event_category.primary(),
-                    
-                
+                        || filter_category.primary() == event_secondary
+                }
+                None => filter_category.primary() == event_category.primary(),
             },
         }
     }
@@ -145,8 +143,7 @@ impl FilterBuilder {
 
     pub fn categories(mut self, categories: Option<Vec<Category>>) -> FilterBuilder {
         if let Some(c) = categories {
-            self.options
-                .insert(FilterOption::Categories(c));
+            self.options.insert(FilterOption::Categories(c));
         }
         self
     }
@@ -156,15 +153,14 @@ impl FilterBuilder {
         exclude_categories: Option<Vec<Category>>,
     ) -> FilterBuilder {
         if let Some(e) = exclude_categories {
-            self.options
-                .insert(FilterOption::ExcludeCategories(e));
+            self.options.insert(FilterOption::ExcludeCategories(e));
         }
         self
     }
 
     pub fn text(mut self, text: Option<String>) -> FilterBuilder {
         if let Some(t) = text {
-                self.options.insert(FilterOption::Text(t));
+            self.options.insert(FilterOption::Text(t));
         }
         self
     }

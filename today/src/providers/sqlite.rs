@@ -514,10 +514,7 @@ mod tests {
         let provider = SQLiteProvider::new("test", path);
         let month_day = MonthDay::new(1, 15).unwrap();
         let text = Some("hist".to_string());
-        let filter = FilterBuilder::new()
-            .text(text)
-            .month_day(month_day)
-            .build();
+        let filter = FilterBuilder::new().text(text).month_day(month_day).build();
         provider.get_events(&filter, &mut events);
 
         let _ = fs::remove_file(path);
