@@ -1,6 +1,5 @@
 use std::error::Error;
 
-
 pub mod event;
 pub mod filter;
 pub mod providers;
@@ -105,7 +104,7 @@ pub fn add_event(config: &Config, config_path: &Path, provider_name: &str, event
     match provider {
         Some(p) => {
             if p.add_is_supported() {
-                if let Err(_e) = p.add_event(event){
+                if let Err(_e) = p.add_event(event) {
                     error!("Unable to add event");
                 }
             } else {

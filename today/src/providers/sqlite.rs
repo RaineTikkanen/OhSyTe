@@ -7,7 +7,6 @@ use sqlite::{Connection, State};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-
 pub struct SQLiteProvider {
     name: String,
     path: PathBuf,
@@ -32,26 +31,37 @@ impl SQLiteProvider {
             match self.make_categories_part(filter, category_map) {
                 Some(part) => parts.push(part),
                 None => {
-                    info!("Filter has categories, but no matching category ids found in category map. Quitting.");
+                    info!(
+                        "Filter has categories, but no matching category ids found in category map. Quitting."
+                    );
                     return None;
-                },
+                }
             }
         }
-        debug!("After processing categories, where clause parts: {:#?}", parts);
+        debug!(
+            "After processing categories, where clause parts: {:#?}",
+            parts
+        );
         if filter.contains_month_day() {
             match self.make_date_part(filter) {
                 Some(part) => parts.push(part),
                 None => debug!("No month and day part in filter"),
             }
         }
-        debug!("After processing month and day, where clause parts: {:#?}", parts);
+        debug!(
+            "After processing month and day, where clause parts: {:#?}",
+            parts
+        );
         if filter.contains_exclude_categories() {
             match self.make_exclude_categories_part(filter, category_map) {
                 Some(part) => parts.push(part),
                 None => debug!("No exclude categories part in filter"),
             }
         }
-        debug!("After processing exclude categories, where clause parts: {:#?}", parts);
+        debug!(
+            "After processing exclude categories, where clause parts: {:#?}",
+            parts
+        );
         if filter.contains_text() {
             match self.make_text_part(filter) {
                 Some(part) => parts.push(part),
@@ -81,6 +91,28 @@ impl SQLiteProvider {
             None
         }
     }
+
+    fn matching_categories_ids(
+        &self,
+        filter_categories: Vec<Category>,
+        category_map: &HashMap<i64, Category>,
+    ) -> Option<Vec<String>> {
+        let mut category_ids: Vec<String> = Vec::new();
+        for filter_category in filter_categories {
+            for (category_id, category) in category_map {
+                if EventFilter::categories_match(&filter_category, category) {
+                    category_ids.push(category_id.to_string());
+                    break;
+                }
+            }
+        }
+        if !category_ids.is_empty() {
+            return Some(category_ids);
+        } else {
+            return None;
+        }
+    }
+
     fn make_categories_part(
         &self,
         filter: &EventFilter,
@@ -88,23 +120,10 @@ impl SQLiteProvider {
     ) -> Option<String> {
         if let Some(filter_categories) = filter.categories() {
             debug!("Filter has categories: {:#?}", filter_categories);
-            let mut filter_category_ids: Vec<String> = Vec::new();
-            debug!("Category map: {:#?}", category_map);
-            for filter_category in filter_categories {
-                for (category_id, category) in category_map {
-                    if EventFilter::accepts_category(&filter_category, category) {
-                        filter_category_ids.push(category_id.to_string());
-                        break;
-                    }
-                }
-            }
-            debug!("Constructed categories part: '{}'", filter_category_ids.join(", "));
-            if !filter_category_ids.is_empty() {
-                debug!("Filter category IDs: {:#?}", filter_category_ids);
-                Some(format!("category_id IN ({})", filter_category_ids.join(", ")))
-            } else {
-                None
-            }
+            match self.matching_categories_ids(filter_categories, category_map) {
+                Some(ids) => return Some(format!("category_id IN ({})", ids.join(", "))),
+                None => return None,
+            };
         } else {
             Some("".to_string())
         }
@@ -116,24 +135,25 @@ impl SQLiteProvider {
         category_map: &HashMap<i64, Category>,
     ) -> Option<String> {
         if let Some(exclude_categories) = filter.exclude_categories() {
-            let mut exclude_ids: Vec<String> = Vec::new();
-            for exclude_category in exclude_categories {
-                for (category_id, category) in category_map {
-                    if EventFilter::accepts_category(&exclude_category, category) {
-                        exclude_ids.push(category_id.to_string());
-                        break;
-                    }
-                }
-            }
-            debug!("Constructed exclude categories part: '{}'", exclude_ids.join(", "));
-            if !exclude_ids.is_empty() {
-                Some(format!("category_id NOT IN ({})", exclude_ids.join(", ")))
-            } else {
-                None
-            }
+            match self.matching_categories_ids(exclude_categories, category_map) {
+                Some(ids) => return Some(format!("category_id NOT IN ({})", ids.join(", "))),
+                None => return None,
+            };
         } else {
             None
         }
+    }
+
+    fn find_exact_category_id(
+        category_map: &HashMap<i64, Category>,
+        category: &Category,
+    ) -> Option<i64> {
+        for (category_id, cat) in category_map {
+            if cat == category {
+                return Some(*category_id);
+            }
+        }
+        None
     }
 
     fn make_text_part(&self, filter: &EventFilter) -> Option<String> {
@@ -144,7 +164,6 @@ impl SQLiteProvider {
             None
         }
     }
-
 
     fn get_categories(&self, connection: &Connection) -> HashMap<i64, Category> {
         let mut category_map: HashMap<i64, Category> = HashMap::new();
@@ -187,6 +206,8 @@ impl EventProvider for SQLiteProvider {
             }
         };
         let category_map = self.get_categories(&connection);
+        debug!("Category map: {:#?}", category_map);
+
         let where_clause = match self.make_where_clause(filter, &category_map) {
             Some(clause) => clause,
             None => return,
@@ -248,12 +269,21 @@ impl EventProvider for SQLiteProvider {
         }
     }
 
-    fn add_event(&self, _event: &Event) -> Result<(), EventProviderError> {
-        return Err(EventProviderError::OperationNotSupported);
+    fn add_event(&self, event: &Event) -> Result<(), EventProviderError> {
+        let connection = match Connection::open(self.path.clone()) {
+            Ok(c) => c,
+            Err(e) => {
+                error!("Error connecting to database: {}", e);
+                return Err(EventProviderError::OperationFailed);
+            }
+        };
+        let category_map = self.get_categories(&connection);
+        let mut category_id: Option<i64> = None;
+        Err(EventProviderError::OperationFailed)
     }
 
     fn add_is_supported(&self) -> bool {
-        false
+        true
     }
 }
 
@@ -346,7 +376,7 @@ mod tests {
     }
 
     #[test]
-    fn successfull_read_events() {
+    fn successful_read_events() {
         let path = Path::new("test_temp.db");
 
         setup_test_db(path);
@@ -367,17 +397,17 @@ mod tests {
     }
 
     #[test]
-    fn successfull_read_events_with_exact_categories_filter() {
+    fn successful_read_events_with_exact_categories_filter() {
         let path = Path::new("test_temp2.db");
 
         setup_test_db(path);
 
         let mut events: Vec<Event> = Vec::new();
         let provider = SQLiteProvider::new("test", path);
-        let categories = vec![
+        let categories = Some(vec![
             Category::new("history", "politics"),
             Category::new("programming", "technology"),
-        ];
+        ]);
         let filter = FilterBuilder::new().categories(categories).build();
         provider.get_events(&filter, &mut events);
 
@@ -390,7 +420,7 @@ mod tests {
     }
 
     #[test]
-    fn successfull_read_events_with_primary_category_filter() {
+    fn successful_read_events_with_primary_category_filter() {
         let path = Path::new("test_temp7.db");
 
         setup_test_db(path);
@@ -398,7 +428,9 @@ mod tests {
         let mut events: Vec<Event> = Vec::new();
         let provider = SQLiteProvider::new("test", path);
         let category = Category::from_primary("history");
-        let filter = FilterBuilder::new().categories(vec![category]).build();
+        let filter = FilterBuilder::new()
+            .categories(Some(vec![category]))
+            .build();
         provider.get_events(&filter, &mut events);
 
         let _ = fs::remove_file(path);
@@ -409,15 +441,17 @@ mod tests {
     }
 
     #[test]
-    fn successfull_read_events_with_exclude_category_filter() {
+    fn successful_read_events_with_exclude_category_filter() {
         let path = Path::new("test_temp6.db");
 
         setup_test_db(path);
 
         let mut events: Vec<Event> = Vec::new();
         let provider = SQLiteProvider::new("test", path);
-        let categories = vec![Category::new("programming", "technology")];
-        let filter = FilterBuilder::new().exclude_categories(categories).build();
+        let exclude_categories = Some(vec![Category::new("programming", "technology")]);
+        let filter = FilterBuilder::new()
+            .exclude_categories(exclude_categories)
+            .build();
         provider.get_events(&filter, &mut events);
 
         let _ = fs::remove_file(path);
@@ -429,14 +463,14 @@ mod tests {
     }
 
     #[test]
-    fn successfull_read_events_with_date_filter() {
+    fn successful_read_events_with_date_filter() {
         let path = Path::new("test_temp3.db");
 
         setup_test_db(path);
 
         let mut events: Vec<Event> = Vec::new();
         let provider = SQLiteProvider::new("test", path);
-        let month_day = MonthDay::new(1, 15);
+        let month_day = MonthDay::new(1, 15).unwrap();
         let filter = FilterBuilder::new().month_day(month_day).build();
         provider.get_events(&filter, &mut events);
 
@@ -450,14 +484,15 @@ mod tests {
     }
 
     #[test]
-    fn successfull_read_events_with_text_filter() {
+    fn successful_read_events_with_text_filter() {
         let path = Path::new("test_temp4.db");
 
         setup_test_db(path);
 
         let mut events: Vec<Event> = Vec::new();
         let provider = SQLiteProvider::new("test", path);
-        let filter = FilterBuilder::new().text("hist".to_string()).build();
+        let text = Some("hist".to_string());
+        let filter = FilterBuilder::new().text(text).build();
         provider.get_events(&filter, &mut events);
 
         let _ = fs::remove_file(path);
@@ -470,16 +505,17 @@ mod tests {
     }
 
     #[test]
-    fn successfull_read_events_with_text_and_date_filters() {
+    fn successful_read_events_with_text_and_date_filters() {
         let path = Path::new("test_temp5.db");
 
         setup_test_db(path);
 
         let mut events: Vec<Event> = Vec::new();
         let provider = SQLiteProvider::new("test", path);
-        let month_day = MonthDay::new(1, 15);
+        let month_day = MonthDay::new(1, 15).unwrap();
+        let text = Some("hist".to_string());
         let filter = FilterBuilder::new()
-            .text("hist".to_string())
+            .text(text)
             .month_day(month_day)
             .build();
         provider.get_events(&filter, &mut events);

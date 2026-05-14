@@ -4,7 +4,7 @@ use crate::providers::{EventProvider, EventProviderError};
 use chrono::{Datelike, NaiveDate};
 use log::error;
 use std::fs::{File, OpenOptions};
-use std::io::{BufRead, BufReader, BufWriter, Write, ErrorKind};
+use std::io::{BufRead, BufReader, BufWriter, ErrorKind, Write};
 use std::path::{Path, PathBuf};
 
 pub struct TextFileProvider {
@@ -82,7 +82,7 @@ impl EventProvider for TextFileProvider {
                             let category = Category::from_str(&category_string);
                             if is_yearless {
                                 event = Event::new_annual(
-                                    MonthDay::new(date.month(), date.day()),
+                                    MonthDay::new(date.month(), date.day()).unwrap(),
                                     description.clone(),
                                     category,
                                 );
@@ -107,13 +107,18 @@ impl EventProvider for TextFileProvider {
         let file = match OpenOptions::new().append(true).open(self.path.clone()) {
             Ok(f) => f,
             Err(e) => {
-                match e.kind(){
-                    ErrorKind::PermissionDenied => error!("No write permission to file '{:?}.", self.path.clone()),
+                match e.kind() {
+                    ErrorKind::PermissionDenied => {
+                        error!("No write permission to file '{:?}.", self.path.clone())
+                    }
                     ErrorKind::NotFound => error!("File '{:?}' not found", self.path.clone()),
-                    _=> error!("Unknown error while adding event to file '{:?}", self.path.clone()),
+                    _ => error!(
+                        "Unknown error while adding event to file '{:?}",
+                        self.path.clone()
+                    ),
                 };
-                return Err(EventProviderError::OperationFailed)
-            },
+                return Err(EventProviderError::OperationFailed);
+            }
         };
 
         let mut writer = BufWriter::new(file);
@@ -138,7 +143,8 @@ impl EventProvider for TextFileProvider {
                     event.category()
                 );
                 Ok(())
-            }
+            },
+            EventKind::RuleBased(_rule) => todo!("Rule-based events not implemented yet"),
         };
     }
 
@@ -184,7 +190,7 @@ Annual
                 Category::from_primary("testing"),
             ),
             Event::new_annual(
-                MonthDay::new(2, 14),
+                MonthDay::new(2, 14).unwrap(),
                 String::from("Annual Event"),
                 Category::from_primary("Annual"),
             ),
@@ -213,7 +219,9 @@ Annual
         create_test_txt_file(path);
         let provider = TextFileProvider::new("TestProvider", path);
         let category = Category::from_primary("testing");
-        let filter = FilterBuilder::new().categories(vec![category]).build();
+        let filter = FilterBuilder::new()
+            .categories(Some(vec![category]))
+            .build();
         let mut events: Vec<Event> = Vec::new();
         provider.get_events(&filter, &mut events);
         let _ = std::fs::remove_file(&path);
@@ -228,7 +236,9 @@ Annual
         create_test_txt_file(path);
         let provider = TextFileProvider::new("TestProvider", path);
         let category = Category::new("testing", "test");
-        let filter = FilterBuilder::new().categories(vec![category]).build();
+        let filter = FilterBuilder::new()
+            .categories(Some(vec![category]))
+            .build();
         let mut events: Vec<Event> = Vec::new();
         provider.get_events(&filter, &mut events);
         let _ = std::fs::remove_file(&path);
@@ -241,7 +251,8 @@ Annual
         let path = Path::new("test_events_text_filter.txt");
         create_test_txt_file(path);
         let provider = TextFileProvider::new("TestProvider", path);
-        let filter = FilterBuilder::new().text("Event 1".to_string()).build();
+        let text = Some("Event 1".to_string());
+        let filter = FilterBuilder::new().text(text).build();
         let mut events: Vec<Event> = Vec::new();
         provider.get_events(&filter, &mut events);
         let _ = std::fs::remove_file(&path);
@@ -254,7 +265,7 @@ Annual
         let path = Path::new("test_events_month_day_filter.txt");
         create_test_txt_file(path);
         let provider = TextFileProvider::new("TestProvider", path);
-        let month_day = MonthDay::new(2, 14);
+        let month_day = MonthDay::new(2, 14).unwrap();
         let filter = FilterBuilder::new().month_day(month_day.clone()).build();
         let mut events: Vec<Event> = Vec::new();
         provider.get_events(&filter, &mut events);
@@ -269,7 +280,8 @@ Annual
         let path = Path::new("test_events_wrong_text_filter.txt");
         create_test_txt_file(path);
         let provider = TextFileProvider::new("TestProvider", path);
-        let filter = FilterBuilder::new().text("Wrong".to_string()).build();
+        let text = Some("Wrong".to_string());
+        let filter = FilterBuilder::new().text(text).build();
         let mut events: Vec<Event> = Vec::new();
         provider.get_events(&filter, &mut events);
         let _ = std::fs::remove_file(&path);
@@ -302,7 +314,7 @@ Annual
         create_test_txt_file(path);
         let provider = TextFileProvider::new("TestProvider", path);
         let event = Event::new_annual(
-            MonthDay::new(3, 5),
+            MonthDay::new(3, 5).unwrap(),
             String::from("Added Annual Event"),
             Category::new("testing", "addition"),
         );

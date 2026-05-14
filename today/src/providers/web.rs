@@ -54,11 +54,10 @@ impl EventProvider for WebProvider {
             response = match request.ok() {
                 Some(r) => r,
                 None => {
-                    info!{"Got empty response from web provider '{}'", self.name()};
+                    info! {"Got empty response from web provider '{}'", self.name()};
                     return;
                 }
             };
-
         }
 
         let json_events = match response.json::<Vec<JSONEvent>>() {
@@ -68,7 +67,11 @@ impl EventProvider for WebProvider {
                 return;
             }
         };
-        info!("Got {} events from web provider '{}'", json_events.len(), self.name());
+        info!(
+            "Got {} events from web provider '{}'",
+            json_events.len(),
+            self.name()
+        );
 
         for json_event in json_events {
             let date = NaiveDate::parse_from_str(&json_event.date, "%F").unwrap();

@@ -38,14 +38,17 @@ struct Args {
     #[arg(short, long, help = "Event date in MMDD format")]
     date: Option<String>,
 
-    #[arg(short, long, help = "Categories to exclude, comma-separated (a/b,c/d)")]
+    #[arg(short, long, help = "Categories to exclude, comma-separated a/b,c/d, \nExact match: [primary/secondary], Either primary or secondary: [category], Only primary: [primary/*]")] 
     exclude: Option<String>,
 
     #[arg(short, long, help = "No age calculation or birthday message")]
     no_birthday: bool,
 
-    #[arg(short, long, help ="Event categories, comma-separated(a/b,c/d")]
+    #[arg(short, long, help = "Event categories to search, comma-separated a/b,c,d/*, \nExact match: [primary/secondary], Either primary or secondary: [category], Only primary: [primary/*]")]
     categories: Option<String>,
+
+    #[arg(short, long, help = "Text to search from events")]
+    text: Option<String>,
 }
 
 fn get_config_path(app_name: &str) -> Option<PathBuf> {
@@ -86,7 +89,13 @@ fn main() {
         }
     } else {
         let today: NaiveDate = Local::now().date_naive();
-        MonthDay::new(today.month(), today.day())
+        match MonthDay::new(today.month(), today.day()) {
+            Ok(md) => md,
+            Err(e) => {
+                error!("Error creating month day from today's date: {:?}", e);
+                return;
+            }
+        }
     };
 
     debug!(
@@ -95,32 +104,31 @@ fn main() {
         month_day.day()
     );
     let filter: EventFilter;
-    let exclude_categories: Vec<Category>;
-    let categories: Vec<Category>;
+    let exclude_categories: Option<Vec<Category>>;
+    let categories: Option<Vec<Category>>;
 
-     fn handle_categories(categories_string: &str) -> Vec<Category> {
+    fn handle_categories(categories_string: &str) -> Vec<Category> {
         categories_string
             .split(',')
             .map(|s| Category::from_str(s))
             .collect()
-
-     }
+    }
 
     if let Some(exclude_string) = args.exclude {
         debug!("exclude_string: {}", exclude_string);
-        exclude_categories = handle_categories(&exclude_string);
+        exclude_categories = Some(handle_categories(&exclude_string));
     } else {
-        exclude_categories = Vec::new();
+        exclude_categories = None;
     }
-    
+
     debug!("exclude_categories: {:#?}", exclude_categories);
 
-    if let Some(categories_string)=args.categories {
+    if let Some(categories_string) = args.categories {
         debug!("categories_string: {}", categories_string);
-        categories = handle_categories(&categories_string);
+        categories = Some(handle_categories(&categories_string));
         debug!("categories: {:?}", categories);
     } else {
-        categories = Vec::new();
+        categories = None;
     }
 
     filter = FilterBuilder::new()

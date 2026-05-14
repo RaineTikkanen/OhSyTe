@@ -15,8 +15,10 @@ pub use web::WebProvider;
 pub trait EventProvider {
     fn name(&self) -> String;
     fn get_events(&self, filter: &EventFilter, events: &mut Vec<Event>);
-    fn add_is_supported(&self) -> bool {false}
-    fn add_event(&self, event: &Event) ->  Result<(), EventProviderError>;
+    fn add_is_supported(&self) -> bool {
+        false
+    }
+    fn add_event(&self, event: &Event) -> Result<(), EventProviderError>;
 }
 
 pub enum EventProviderError {

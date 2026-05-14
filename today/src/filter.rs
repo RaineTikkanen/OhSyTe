@@ -1,8 +1,11 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, io::Empty};
 
 use log::{debug, info};
 
-use crate::{event::{Category, Event, MonthDay}, filter};
+use crate::{
+    event::{Category, Event, MonthDay},
+    filter,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum FilterOption {
@@ -24,28 +27,19 @@ impl EventFilter {
         }
     }
 
-    pub fn accepts_category(filter_category: &Category, event_category: &Category) -> bool {
-        debug!("filter category: {:?}, event category: {:?}", filter_category, event_category);
+    pub fn categories_match(filter_category: &Category, event_category: &Category) -> bool {
         match filter_category.secondary() {
-            Some(_) => {
-                let result = filter_category==event_category;
-                debug!("Exact match result: {}", result);
-                result
-            }
-            None => {
-                match event_category.secondary() {
-                    Some(_) => {
-                        let result = filter_category.primary()==event_category.primary() || filter_category.primary()==event_category.secondary().unwrap();
-                        debug!("Primary match result: {}", result);
-                        result
-                    }
-                    None => {
-                        let result = filter_category.primary()==event_category.primary();
-                        debug!("Primary match result: {}", result);
-                        result
-                    }
-                }
-            }
+            Some(s) if s == "*" => filter_category.primary() == event_category.primary(),
+            Some(_) => filter_category == event_category,
+            None => match event_category.secondary() {
+                Some(event_secondary) => 
+                    filter_category.primary() == event_category.primary()
+                        || filter_category.primary() == event_secondary,
+                None => 
+                    filter_category.primary() == event_category.primary(),
+                    
+                
+            },
         }
     }
 
@@ -59,9 +53,13 @@ impl EventFilter {
         for option in self.options.iter() {
             let result = match option {
                 FilterOption::MonthDay(month_day) => *month_day == event.month_day(),
-                FilterOption::Categories(categories) => categories.iter().any(|category| Self::accepts_category(category, &event.category())),
+                FilterOption::Categories(categories) => categories
+                    .iter()
+                    .any(|category| Self::categories_match(category, &event.category())),
                 FilterOption::Text(text) => event.description().contains(text),
-                FilterOption::ExcludeCategories(categories) => !categories.iter().any(|category| Self::accepts_category(category, &event.category())),
+                FilterOption::ExcludeCategories(categories) => !categories
+                    .iter()
+                    .any(|category| Self::categories_match(category, &event.category())),
             };
             results.push(result);
         }
@@ -145,23 +143,28 @@ impl FilterBuilder {
         self
     }
 
-    pub fn categories(mut self, categories: Vec<Category>) -> FilterBuilder {
-        if !categories.is_empty() {
-            self.options.insert(FilterOption::Categories(categories));
+    pub fn categories(mut self, categories: Option<Vec<Category>>) -> FilterBuilder {
+        if let Some(c) = categories {
+            self.options
+                .insert(FilterOption::Categories(c));
         }
         self
     }
 
-    pub fn exclude_categories(mut self, categories: Vec<Category>) -> FilterBuilder {
-        if !categories.is_empty() {
-            self.options.insert(FilterOption::ExcludeCategories(categories));
+    pub fn exclude_categories(
+        mut self,
+        exclude_categories: Option<Vec<Category>>,
+    ) -> FilterBuilder {
+        if let Some(e) = exclude_categories {
+            self.options
+                .insert(FilterOption::ExcludeCategories(e));
         }
         self
     }
 
-    pub fn text(mut self, text: String) -> FilterBuilder {
-        if !text.is_empty() {
-            self.options.insert(FilterOption::Text(text));
+    pub fn text(mut self, text: Option<String>) -> FilterBuilder {
+        if let Some(t) = text {
+                self.options.insert(FilterOption::Text(t));
         }
         self
     }
@@ -205,7 +208,7 @@ mod tests {
     fn filter_accepts_right_date() {
         let category = Category::new("programming", "rust");
         let today = Local::now().date_naive();
-        let month_day = MonthDay::new(today.month(), today.day());
+        let month_day = MonthDay::new(today.month(), today.day()).unwrap();
         let event = Event::new_singular(today, "Test description".to_string(), category);
         let filter = FilterBuilder::new().month_day(month_day).build();
 
@@ -216,7 +219,7 @@ mod tests {
     fn filter_denies_wrong_date() {
         let category = Category::new("programming", "rust");
         let today = Local::now().date_naive();
-        let month_day = MonthDay::new(today.month(), today.day());
+        let month_day = MonthDay::new(today.month(), today.day()).unwrap();
         let event = Event::new_singular(
             NaiveDate::from_ymd_opt(2026, 3, 5).unwrap(),
             "Test description".to_string(),
@@ -235,7 +238,9 @@ mod tests {
             "Test description".to_string(),
             category.clone(),
         );
-        let filter = FilterBuilder::new().categories(vec![category]).build();
+        let filter = FilterBuilder::new()
+            .categories(Some(vec![category]))
+            .build();
 
         assert!(filter.accepts(&event));
     }
@@ -248,7 +253,9 @@ mod tests {
             Category::new("programming", "rust"),
         );
         let filter_category = Category::from_primary("programming");
-        let filter = FilterBuilder::new().categories(vec![filter_category]).build();
+        let filter = FilterBuilder::new()
+            .categories(Some(vec![filter_category]))
+            .build();
 
         assert!(filter.accepts(&event));
     }
@@ -261,7 +268,9 @@ mod tests {
             Category::new("programming", "rust"),
         );
         let filter_category = Category::from_primary("wrong");
-        let filter = FilterBuilder::new().categories(vec![filter_category]).build();
+        let filter = FilterBuilder::new()
+            .categories(Some(vec![filter_category]))
+            .build();
 
         assert!(!filter.accepts(&event));
     }
@@ -274,7 +283,9 @@ mod tests {
             Category::new("programming", "rust"),
         );
         let filter_category = Category::new("programming", "wrong");
-        let filter = FilterBuilder::new().categories(vec![filter_category]).build();
+        let filter = FilterBuilder::new()
+            .categories(Some(vec![filter_category]))
+            .build();
 
         assert!(!filter.accepts(&event));
     }
@@ -288,7 +299,9 @@ mod tests {
             "Test description".to_string(),
             right_category,
         );
-        let filter = FilterBuilder::new().categories(vec![wrong_category]).build();
+        let filter = FilterBuilder::new()
+            .categories(Some(vec![wrong_category]))
+            .build();
 
         assert!(!filter.accepts(&event));
     }
@@ -301,7 +314,8 @@ mod tests {
             "Test description".to_string(),
             category,
         );
-        let filter = FilterBuilder::new().text("Test".to_string()).build();
+        let text = Some("Test".to_string());
+        let filter = FilterBuilder::new().text(text).build();
 
         assert!(filter.accepts(&event));
     }
@@ -314,7 +328,8 @@ mod tests {
             "Test description".to_string(),
             category,
         );
-        let filter = FilterBuilder::new().text("Wrong".to_string()).build();
+        let text = Some("Wrong".to_string());
+        let filter = FilterBuilder::new().text(text).build();
 
         assert!(!filter.accepts(&event));
     }
@@ -327,7 +342,9 @@ mod tests {
             "Test description".to_string(),
             category.clone(),
         );
-        let filter = FilterBuilder::new().exclude_categories(vec![category]).build();
+        let filter = FilterBuilder::new()
+            .exclude_categories(Some(vec![category]))
+            .build();
         assert!(!filter.accepts(&event));
     }
 
@@ -339,7 +356,9 @@ mod tests {
             Category::new("programming", "rust"),
         );
         let exclude_categories = vec![Category::from_primary("programming")];
-        let filter = FilterBuilder::new().exclude_categories(exclude_categories).build();
+        let filter = FilterBuilder::new()
+            .exclude_categories(Some(exclude_categories))
+            .build();
         assert!(!filter.accepts(&event));
     }
 }
