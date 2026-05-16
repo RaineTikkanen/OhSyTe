@@ -1,4 +1,4 @@
-use crate::event::{Category, Event, EventKind, MonthDay};
+use crate::event::{Category, Event, EventKind, MonthDay, RuleParseError, Rule};
 use crate::filter::EventFilter;
 use crate::providers::{EventProvider, EventProviderError};
 use chrono::{Datelike, NaiveDate};
@@ -20,6 +20,64 @@ impl CSVFileProvider {
             path: path.to_path_buf(),
         }
     }
+    fn parse_event(
+        category_string: &str,
+        date_string: &str,
+        description: &str,
+    ) -> Result<Event, CSVFileProviderError> {
+        let is_rule_based = !date_string.contains("-");
+        let is_yearless = date_string.starts_with("--");
+
+        let date_string = if is_yearless {
+            date_string.replace("--", "2000-")
+        } else {
+            date_string.to_string()
+        };
+        if is_rule_based {
+            debug!(
+                "Parsing rule based event with date string '{}'",
+                date_string
+            );
+            let rule = match Rule::parse(&date_string) {
+                Ok(r) => r,
+                Err(e) => {
+                    error!("Error parsing rule '{}': {}", date_string, e);
+                    return Err(CSVFileProviderError::ParseError);
+                }
+            };
+            return Ok(Event::new_rule_based(
+                rule,
+                description.to_string(),
+                Category::from_str(&category_string),
+            ));
+        } else {
+            match NaiveDate::parse_from_str(&date_string, "%F") {
+                Ok(date) => {
+                    let category = Category::from_str(&category_string);
+                    let event: Event;
+                    if is_yearless {
+                        return Ok(Event::new_annual(
+                            //Luotetaan chrono paketin validiointiin päivämäärän oikeellisuudesta, joten unwrap on turvallinen tässä
+                            MonthDay::new(date.month(), date.day()).unwrap(),
+                            description.to_string(),
+                            category,
+                        ));
+                    } else {
+                        return Ok(Event::new_singular(date, description.to_string(), category));
+                    }
+                }
+                Err(e) => {
+                    error!("Error parsing date '{}': {}", date_string, e);
+                    return Err(CSVFileProviderError::ParseError)
+                }
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
+enum CSVFileProviderError {
+    ParseError,
 }
 
 impl EventProvider for CSVFileProvider {
@@ -48,37 +106,58 @@ impl EventProvider for CSVFileProvider {
             };
 
             let mut date_string = record[0].to_string();
+            let description = record[1].to_string();
+            let category_string = record[2].to_string();
+            let event = match Self::parse_event(&category_string, &date_string, &description) {
+                Ok(e) => e,
+                Err(e) => {
+                    error!("Error parsing event from record '{:?}': {:?}", record, e);
+                    continue;
+                }
+            };
+            if filter.accepts(&event) {
+                events.push(event)
+            }
+            /*
+            let is_rule_based = !date_string.contains("-");
             let is_yearless = date_string.starts_with("--");
 
             if is_yearless {
                 date_string = date_string.replace("--", "2000-");
             }
 
-            let description = record[1].to_string();
-            let category_string = record[2].to_string();
+            if is_rule_based {
+                debug!("Parsing rule based event with date string '{}'", date_string);
+                let rule = match Rule::parse(&date_string) {
+                    Ok(r)=> r,
+                    Err(e)=> continue
+                };
+                event = Event
 
-            match NaiveDate::parse_from_str(&date_string, "%F") {
-                Ok(date) => {
-                    let category = Category::from_str(&category_string);
-                    let event: Event;
-                    if is_yearless {
-                        event = Event::new_annual(
-                            //Luotetaan chrono paketin validiointiin päivämäärän oikeellisuudesta, joten unwrap on turvallinen tässä
-                            MonthDay::new(date.month(), date.day()).unwrap(),
-                            description.clone(),
-                            category,
-                        );
-                    } else {
-                        event = Event::new_singular(date, description.clone(), category);
+            } else {
+                match NaiveDate::parse_from_str(&date_string, "%F") {
+                    Ok(date) => {
+                        let category = Category::from_str(&category_string);
+                        let event: Event;
+                        if is_yearless {
+                            event = Event::new_annual(
+                                //Luotetaan chrono paketin validiointiin päivämäärän oikeellisuudesta, joten unwrap on turvallinen tässä
+                                MonthDay::new(date.month(), date.day()).unwrap(),
+                                description.clone(),
+                                category,
+                            );
+                        } else {
+                            event = Event::new_singular(date, description.clone(), category);
+                        }
+                        if filter.accepts(&event) {
+                            events.push(event);
+                        }
                     }
-                    if filter.accepts(&event) {
-                        events.push(event);
+                    Err(_) => {
+                        error!("Invalid date '{}'", date_string);
                     }
                 }
-                Err(_) => {
-                    error!("Invalid date '{}'", date_string);
-                }
-            }
+            } */
         }
     }
 

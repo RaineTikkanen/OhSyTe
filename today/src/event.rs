@@ -3,7 +3,7 @@ use std::fmt;
 use chrono::{Datelike, Local, Month, NaiveDate, Weekday as ChronoWeekday};
 use log::debug;
 use std::str::FromStr;
-use strum_macros::EnumString;
+use strum_macros::{Display, EnumString};
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum EventKind {
@@ -178,14 +178,14 @@ pub struct Category {
 impl Category {
     pub fn new(primary: &str, secondary: &str) -> Self {
         Self {
-            primary: primary.to_string(),
-            secondary: Some(secondary.to_string()),
+            primary: primary.to_string().to_lowercase(),
+            secondary: Some(secondary.to_string().to_lowercase()),
         }
     }
 
     pub fn from_primary(primary: &str) -> Self {
         Self {
-            primary: primary.to_string(),
+            primary: primary.to_string().to_lowercase(),
             secondary: None,
         }
     }
@@ -194,13 +194,13 @@ impl Category {
         let parts: Vec<&str> = s.split("/").collect();
         if parts.len() < 2 {
             Category {
-                primary: parts[0].to_string(),
+                primary: parts[0].to_string().to_lowercase(),
                 secondary: None,
             }
         } else {
             Category {
-                primary: parts[0].to_string(),
-                secondary: Some(parts[1].to_string()),
+                primary: parts[0].to_string().to_lowercase(),
+                secondary: Some(parts[1].to_string().to_lowercase()),
             }
         }
     }
@@ -256,7 +256,7 @@ pub struct Rule {
     month: Month,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Display)]
 pub enum RuleParseError {
     InvalidFormat,
     InvalidOrdinal,

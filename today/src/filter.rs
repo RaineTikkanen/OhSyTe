@@ -54,7 +54,10 @@ impl EventFilter {
                 FilterOption::Categories(categories) => categories
                     .iter()
                     .any(|category| Self::categories_match(category, &event.category())),
-                FilterOption::Text(text) => event.description().contains(text),
+                FilterOption::Text(text) => event
+                    .description()
+                    .to_lowercase()
+                    .contains(text.to_lowercase().as_str()),
                 FilterOption::ExcludeCategories(categories) => !categories
                     .iter()
                     .any(|category| Self::categories_match(category, &event.category())),
@@ -242,11 +245,26 @@ mod tests {
     }
 
     #[test]
-    fn filter_accepts_right_primary_category() {
+    fn filter_accepts_primary_only_filter_matching_event_primary_category() {
         let event = Event::new_singular(
             NaiveDate::from_ymd_opt(2026, 3, 5).unwrap(),
             "Test description".to_string(),
             Category::new("programming", "rust"),
+        );
+        let filter_category = Category::from_primary("programming");
+        let filter = FilterBuilder::new()
+            .categories(Some(vec![filter_category]))
+            .build();
+
+        assert!(filter.accepts(&event));
+    }
+
+    #[test]
+    fn filter_accepts_primary_only_filter_matching_event_secondary_category() {
+        let event = Event::new_singular(
+            NaiveDate::from_ymd_opt(2000, 1, 2).unwrap(),
+            "Another test".to_string(),
+            Category::new("rust", "programming"),
         );
         let filter_category = Category::from_primary("programming");
         let filter = FilterBuilder::new()
@@ -356,5 +374,49 @@ mod tests {
             .exclude_categories(Some(exclude_categories))
             .build();
         assert!(!filter.accepts(&event));
+    }
+
+    #[test]
+    fn category_is_not_case_sensitive() {
+        let event = Event::new_singular(
+            NaiveDate::from_ymd_opt(2026, 3, 5).unwrap(),
+            "Test description".to_string(),
+            Category::new("programming", "rust"),
+        );
+        let filter_category = Category::new("ProgRamMing", "rUsT");
+        let filter = FilterBuilder::new()
+            .categories(Some(vec![filter_category]))
+            .build();
+        assert!(filter.accepts(&event));
+    }
+
+    #[test]
+    fn exclude_category_is_not_case_sensitive() {
+        let event = Event::new_singular(
+            NaiveDate::from_ymd_opt(2026, 3, 5).unwrap(),
+            "Test description".to_string(),
+            Category::new("prOgrAmminG", "RuSt"),
+        );
+        let exclude_category = Category::new("ProgRamMing", "rUsT");
+        let filter = FilterBuilder::new()
+            .exclude_categories(Some(vec![exclude_category]))
+            .build();
+        assert!(!filter.accepts(&event));
+    }
+
+    #[test]
+    fn text_search_is_not_case_sensitive() {
+        let event = Event::new_singular(
+            NaiveDate::from_ymd_opt(2026, 3, 5).unwrap(),
+            "TesT dEsCripTioN".to_string(),
+            Category::new("programming", "rust"),
+        );
+        let text = Some("tESt".to_string());
+        let filter = FilterBuilder::new().text(text).build();
+        assert!(filter.accepts(&event));
+
+        let text = Some("DeScrIPtiOn".to_string());
+        let filter = FilterBuilder::new().text(text).build();
+        assert!(filter.accepts(&event));
     }
 }
