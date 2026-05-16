@@ -20,7 +20,11 @@ enum Command {
     Add {
         #[arg(short, long, help = "Name of event provider")]
         provider_name: String,
-        #[arg(short, long, help = "Date of event. Format: YYYY-MM-DD")]
+        #[arg(
+            short,
+            long,
+            help = "Date of event. Singular events: YYYY-MM-DD, Annual events: MM-DD, Rule-based events: 'third Monday in January'"
+        )]
         date: String,
         #[arg(short = 'e', long, help = "Description of event")]
         description: String,
@@ -41,7 +45,7 @@ struct Args {
     #[arg(
         short,
         long,
-        help = "Categories to exclude, comma-separated a/b,c/d, \nExact match: [primary/secondary], Either primary or secondary: [category], Only primary: [primary/*]"
+        help = "Categories to exclude, comma-separated a/b,c,d/*, \nExact match: [primary/secondary], Either primary or secondary: [category], Only primary: [primary/*]"
     )]
     exclude: Option<String>,
 
@@ -80,6 +84,13 @@ fn get_config_path(app_name: &str) -> Option<PathBuf> {
     None
 }
 
+fn handle_categories(categories_string: &str) -> Vec<Category> {
+    categories_string
+        .split(',')
+        .map(|s| Category::from_str(s))
+        .collect()
+}
+
 fn main() {
     env_logger::init();
 
@@ -114,13 +125,7 @@ fn main() {
     let filter: EventFilter;
     let exclude_categories: Option<Vec<Category>>;
     let categories: Option<Vec<Category>>;
-
-    fn handle_categories(categories_string: &str) -> Vec<Category> {
-        categories_string
-            .split(',')
-            .map(|s| Category::from_str(s))
-            .collect()
-    }
+    let description: Option<String>;
 
     if let Some(exclude_string) = args.exclude {
         debug!("exclude_string: {}", exclude_string);
@@ -139,10 +144,18 @@ fn main() {
         categories = None;
     }
 
+    if let Some(text) = args.text {
+        debug!("text: {}", text);
+        description = Some(text);
+    } else {
+        description = None;
+    }
+
     filter = FilterBuilder::new()
         .month_day(month_day)
         .exclude_categories(exclude_categories)
         .categories(categories)
+        .text(description)
         .build();
 
     debug!("{:?}", filter);

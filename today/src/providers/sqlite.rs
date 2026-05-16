@@ -372,7 +372,7 @@ impl EventProvider for SQLiteProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::event::MonthDay;
+    use crate::event::{MonthDay, Rule};
     use crate::filter::FilterBuilder;
     use std::fs;
 
@@ -637,6 +637,21 @@ mod tests {
         let provider = SQLiteProvider::new("test", path);
         let event = Event::new_annual(
             MonthDay::new(4, 10).unwrap(),
+            String::from("Test annual event"),
+            Category::new("test", "add"),
+        );
+        let result = provider.add_event(&event);
+        let _ = std::fs::remove_file(&path);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn add_rule_based_event_fails(){
+        let path = Path::new("test_temp_add3.db");
+        setup_test_db(path);
+        let provider = SQLiteProvider::new("test", path);
+        let event = Event::new_rule_based(
+            Rule::parse("First monday of january").unwrap(),
             String::from("Test annual event"),
             Category::new("test", "add"),
         );

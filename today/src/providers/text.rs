@@ -212,7 +212,7 @@ impl EventProvider for TextFileProvider {
                 );
                 debug!("Write result: {:?}", result);
                 Ok(())
-            },
+            }
         };
     }
 

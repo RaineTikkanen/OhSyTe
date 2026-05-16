@@ -235,7 +235,6 @@ pub enum Weekday {
     Sunday = 6,
 }
 
-
 impl Weekday {
     pub fn as_chrono_weekday(&self) -> ChronoWeekday {
         match *self {
@@ -343,12 +342,8 @@ impl Rule {
     }
 
     pub fn as_string(&self) -> String {
-        format!(
-            "{} {} in {:?}",
-            self.ordinal, self.weekday, self.month
-        )
+        format!("{} {} in {:?}", self.ordinal, self.weekday, self.month)
     }
-
 }
 
 fn nth_weekday_in_month(
@@ -381,7 +376,6 @@ fn last_weekday_in_month(year: i32, month: Month, weekday: Weekday) -> Option<Na
     }
     None
 }
-
 
 #[cfg(test)]
 mod tests {
