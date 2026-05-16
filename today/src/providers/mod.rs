@@ -21,6 +21,7 @@ pub trait EventProvider {
     fn add_event(&self, event: &Event) -> Result<(), EventProviderError>;
 }
 
+#[derive(Debug)]
 pub enum EventProviderError {
     OperationNotSupported,
     OperationFailed,

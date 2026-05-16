@@ -8,7 +8,7 @@ use today::{Config, add_event, run};
 mod birthday;
 use birthday::handle_birthday;
 
-use today::event::{Category, Event, MonthDay};
+use today::event::{Category, Event, MonthDay, Rule};
 
 use today::filter::{EventFilter, FilterBuilder};
 
@@ -213,18 +213,43 @@ fn main() {
                 }) => {
                     let category = Category::from_str(&category);
                     let mut date_string = date;
-                    let is_yearless = date_string.starts_with("--");
+                    let is_yearless = date_string.len() == 5;
+                    let is_rule_based = !date_string.contains("-");
+                    let event: Event;
                     if is_yearless {
-                        date_string = date_string.replace("--", "2000-");
+                        date_string = format!("2000-{}", date_string)
                     }
-                    let date = match chrono::NaiveDate::parse_from_str(&date_string, "%Y-%m-%d") {
-                        Ok(d) => d,
-                        Err(_) => {
-                            error!("Unable to parse date '{}'", date_string);
-                            return;
+                    if is_rule_based {
+                        let rule = match Rule::parse(&date_string) {
+                            Ok(r) => r,
+                            Err(e) => {
+                                error!(
+                                    "Unable to parse rule-based date string '{}': {:?}",
+                                    date_string, e
+                                );
+                                return;
+                            }
+                        };
+                        event = Event::new_rule_based(rule, description, category);
+                    } else {
+                        let date = match chrono::NaiveDate::parse_from_str(&date_string, "%Y-%m-%d")
+                        {
+                            Ok(d) => d,
+                            Err(_) => {
+                                error!("Unable to parse date '{}'", date_string);
+                                return;
+                            }
+                        };
+                        if is_yearless {
+                            event = Event::new_annual(
+                                MonthDay::new(date.month(), date.day()).unwrap(),
+                                description,
+                                category,
+                            );
+                        } else {
+                            event = Event::new_singular(date, description, category);
                         }
-                    };
-                    let event = Event::new_singular(date, description, category);
+                    }
                     info!("Adding event '{}' to provider '{}'", event, provider_name);
 
                     add_event(&config, &path, &provider_name, &event);

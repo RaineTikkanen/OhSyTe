@@ -1,11 +1,6 @@
-use std::{collections::HashSet, io::Empty};
+use std::collections::HashSet;
 
-use log::{debug, info};
-
-use crate::{
-    event::{Category, Event, MonthDay},
-    filter,
-};
+use crate::event::{Category, Event, MonthDay};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum FilterOption {
@@ -27,6 +22,11 @@ impl EventFilter {
         }
     }
 
+    /// Checks if a filter category matches an event category.
+    /// Category matches if:
+    /// - filter category has a secondary category of "*" and its primary category matches the event's primary category, or
+    /// - filter category matches the event category exactly, or
+    /// - filter category has no secondary category and its primary category matches either the event's primary category or the event's secondary category (if it exists).
     pub fn categories_match(filter_category: &Category, event_category: &Category) -> bool {
         match filter_category.secondary() {
             Some(s) if s == "*" => filter_category.primary() == event_category.primary(),
@@ -41,6 +41,7 @@ impl EventFilter {
         }
     }
 
+    ///Checks if an event matches the filter. An event matches the filter if it matches all the filter options. If the filter has no options, it matches all events.
     pub fn accepts(&self, event: &Event) -> bool {
         if self.options.is_empty() {
             return true;
@@ -90,38 +91,38 @@ impl EventFilter {
             .iter()
             .any(|option| matches!(option, &FilterOption::Text(_)))
     }
+
     pub fn month_day(&self) -> Option<MonthDay> {
         for option in self.options.iter() {
-            match option {
-                FilterOption::MonthDay(month_day) => return Some(month_day.clone()),
-                _ => (),
+            if let FilterOption::MonthDay(month_day) = option {
+                return Some(month_day.clone());
             }
         }
         None
     }
+
     pub fn categories(&self) -> Option<Vec<Category>> {
         for option in self.options.iter() {
-            match option {
-                FilterOption::Categories(categories) => return Some(categories.clone()),
-                _ => (),
+            if let FilterOption::Categories(categories) = option {
+                return Some(categories.clone());
             }
         }
         None
     }
+
     pub fn text(&self) -> Option<String> {
         for option in self.options.iter() {
-            match option {
-                FilterOption::Text(text) => return Some(text.clone()),
-                _ => (),
+            if let FilterOption::Text(text) = option {
+                return Some(text.clone());
             }
         }
         None
     }
+
     pub fn exclude_categories(&self) -> Option<Vec<Category>> {
         for option in self.options.iter() {
-            match option {
-                FilterOption::ExcludeCategories(categories) => return Some(categories.clone()),
-                _ => (),
+            if let FilterOption::ExcludeCategories(categories) = option {
+                return Some(categories.clone());
             }
         }
         None
@@ -133,17 +134,43 @@ pub struct FilterBuilder {
 }
 
 impl FilterBuilder {
+    ///Builder for creating an EventFilter. Allows chaining methods to set filter options and then build the filter.
+    /// If no options are set, builder will create a filter that accepts all events.
+    ///
+    /// # Examples:
+    /// ### Filter with all options set:
+    /// ```
+    /// # use today::{
+    /// #    event::{Category, Event, MonthDay},
+    /// # };
+    /// # use today::filter::FilterBuilder;
+    /// #
+    /// let filter = FilterBuilder::new()
+    ///     .month_day(MonthDay::new(3, 5).unwrap())
+    ///     .categories(Some(vec![Category::new("programming", "rust")]))
+    ///     .exclude_categories(Some(vec![Category::new("holiday", "christmas")]))
+    ///     .text(Some("test".to_string()))
+    ///     .build();
+    /// ```
+    /// ### Empty filter that accepts all events:
+    ///
+    /// ```
+    /// # use today::filter::FilterBuilder;
+    /// let filter = FilterBuilder::new().build();
+    /// ```
     pub fn new() -> Self {
         Self {
             options: HashSet::new(),
         }
     }
 
+    ///Sets the month and day to accept
     pub fn month_day(mut self, month_day: MonthDay) -> FilterBuilder {
         self.options.insert(FilterOption::MonthDay(month_day));
         self
     }
 
+    ///Sets the categories to accept
     pub fn categories(mut self, categories: Option<Vec<Category>>) -> FilterBuilder {
         if let Some(c) = categories {
             self.options.insert(FilterOption::Categories(c));
@@ -151,6 +178,7 @@ impl FilterBuilder {
         self
     }
 
+    ///Sets the categories to not accept
     pub fn exclude_categories(
         mut self,
         exclude_categories: Option<Vec<Category>>,
@@ -161,6 +189,7 @@ impl FilterBuilder {
         self
     }
 
+    ///Sets the text to search for in the event description
     pub fn text(mut self, text: Option<String>) -> FilterBuilder {
         if let Some(t) = text {
             self.options.insert(FilterOption::Text(t));
@@ -168,6 +197,7 @@ impl FilterBuilder {
         self
     }
 
+    ///Creates the EventFilter with the specified options
     pub fn build(self) -> EventFilter {
         EventFilter {
             options: self.options,
@@ -179,6 +209,41 @@ impl FilterBuilder {
 mod tests {
     use super::*;
     use chrono::{Datelike, Local, NaiveDate};
+
+    #[test]
+    fn creates_filter_with_month_day() {
+        let month_day = MonthDay::new(3, 5).unwrap();
+        let filter = FilterBuilder::new().month_day(month_day.clone()).build();
+        assert_eq!(filter.month_day(), Some(month_day));
+    }
+
+    #[test]
+    fn creates_filter_with_categories() {
+        let categories = vec![Category::new("programming", "rust")];
+        let filter = FilterBuilder::new()
+            .categories(Some(categories.clone()))
+            .build();
+        assert_eq!(filter.categories(), Some(categories));
+    }
+
+    #[test]
+    fn creates_filter_with_text() {
+        let text = "test".to_string();
+        let filter = FilterBuilder::new().text(Some(text.clone())).build();
+        assert_eq!(filter.text(), Some(text));
+    }
+
+    #[test]
+    fn creates_filter_with_exclude_categories() {
+        let exclude_categories = vec![
+            Category::new("programming", "rust"),
+            Category::new("holiday", "christmas"),
+        ];
+        let filter = FilterBuilder::new()
+            .exclude_categories(Some(exclude_categories.clone()))
+            .build();
+        assert_eq!(filter.exclude_categories(), Some(exclude_categories));
+    }
 
     #[test]
     fn creates_empty_filter() {

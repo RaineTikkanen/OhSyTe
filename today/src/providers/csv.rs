@@ -1,4 +1,4 @@
-use crate::event::{Category, Event, EventKind, MonthDay, RuleParseError, Rule};
+use crate::event::{Category, Event, EventKind, MonthDay, Rule, RuleParseError};
 use crate::filter::EventFilter;
 use crate::providers::{EventProvider, EventProviderError};
 use chrono::{Datelike, NaiveDate};
@@ -68,7 +68,7 @@ impl CSVFileProvider {
                 }
                 Err(e) => {
                     error!("Error parsing date '{}': {}", date_string, e);
-                    return Err(CSVFileProviderError::ParseError)
+                    return Err(CSVFileProviderError::ParseError);
                 }
             }
         }
@@ -207,7 +207,17 @@ impl EventProvider for CSVFileProvider {
 
                 Ok(())
             }
-            EventKind::RuleBased(_) => todo!("Rule-based events not implemented yet"),
+            EventKind::RuleBased(rule) => {
+                let result = writeln!(
+                    writer,
+                    "{},{},{}",
+                    rule.as_string(),
+                    event.description(),
+                    event.category()
+                );
+                debug!("Write result: {:?}", result);
+                Ok(())
+            }
         };
     }
 
@@ -356,6 +366,26 @@ mod tests {
         );
         _ = provider.add_event(&event);
 
+        let mut events: Vec<Event> = Vec::new();
+        let filter = FilterBuilder::new().build();
+        provider.get_events(&filter, &mut events);
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(events.len(), 4);
+        assert_eq!(events[3], event);
+    }
+
+    #[test]
+    fn adds_rule_based_event_to_csv_file() {
+        let path = Path::new("test_events_add_rule_based.csv");
+        create_test_csv_file(path);
+        let provider = CSVFileProvider::new("TestProvider", path);
+        let rule = Rule::parse("last Friday in March").unwrap();
+        let event = Event::new_rule_based(
+            rule,
+            String::from("Added Rule-Based Event"),
+            Category::new("testing", "addition"),
+        );
+        _ = provider.add_event(&event);
         let mut events: Vec<Event> = Vec::new();
         let filter = FilterBuilder::new().build();
         provider.get_events(&filter, &mut events);

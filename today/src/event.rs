@@ -223,7 +223,7 @@ impl fmt::Display for Category {
     }
 }
 
-#[derive(Debug, Clone, Copy, Eq, Ord, PartialEq, PartialOrd, EnumString)]
+#[derive(Debug, Clone, Copy, Eq, Ord, PartialEq, PartialOrd, EnumString, Display)]
 #[strum(ascii_case_insensitive)]
 pub enum Weekday {
     Monday = 0,
@@ -234,6 +234,7 @@ pub enum Weekday {
     Saturday = 5,
     Sunday = 6,
 }
+
 
 impl Weekday {
     pub fn as_chrono_weekday(&self) -> ChronoWeekday {
@@ -247,6 +248,16 @@ impl Weekday {
             Weekday::Sunday => ChronoWeekday::Sun,
         }
     }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, EnumString, Display)]
+#[strum(ascii_case_insensitive)]
+enum Ordinal {
+    First = 1,
+    Second = 2,
+    Third = 3,
+    Fourth = 4,
+    Last = 5,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -330,6 +341,14 @@ impl Rule {
     pub fn year(&self) -> i32 {
         Local::now().year()
     }
+
+    pub fn as_string(&self) -> String {
+        format!(
+            "{} {} in {:?}",
+            self.ordinal, self.weekday, self.month
+        )
+    }
+
 }
 
 fn nth_weekday_in_month(
@@ -363,15 +382,6 @@ fn last_weekday_in_month(year: i32, month: Month, weekday: Weekday) -> Option<Na
     None
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, EnumString)]
-#[strum(ascii_case_insensitive)]
-enum Ordinal {
-    First = 1,
-    Second = 2,
-    Third = 3,
-    Fourth = 4,
-    Last = 5,
-}
 
 #[cfg(test)]
 mod tests {

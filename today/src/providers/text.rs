@@ -46,8 +46,6 @@ impl TextFileProvider {
         } else {
             date_string.to_string()
         };
-        let event: Event;
-
         if !date_string.contains("-") {
             debug!(
                 "Parsing rule-based event with date string '{}'",
@@ -183,26 +181,38 @@ impl EventProvider for TextFileProvider {
 
         return match event.kind() {
             EventKind::Singular(date) => {
-                _ = writeln!(
+                let result = writeln!(
                     writer,
                     "{}\n{}\n{}\n",
                     date.to_string(),
                     event.description(),
                     event.category()
                 );
+                debug!("Write result: {:?}", result);
                 Ok(())
             }
             EventKind::Annual(month_day) => {
-                _ = writeln!(
+                let result = writeln!(
                     writer,
                     "--{}\n{}\n{}\n",
                     month_day.to_string(),
                     event.description(),
                     event.category()
                 );
+                debug!("Write result: {:?}", result);
                 Ok(())
             }
-            EventKind::RuleBased(_) => todo!("Rule-based events not implemented yet"),
+            EventKind::RuleBased(rule) => {
+                let result = writeln!(
+                    writer,
+                    "{}\n{}\n{}\n",
+                    rule.as_string(),
+                    event.description(),
+                    event.category()
+                );
+                debug!("Write result: {:?}", result);
+                Ok(())
+            },
         };
     }
 
@@ -425,5 +435,17 @@ rule-based/January
             event.kind(),
             EventKind::Annual(MonthDay::new(2, 14).unwrap())
         );
+    }
+
+    #[test]
+    fn parse_rule_based_event() {
+        let category_string = "rule-based/January";
+        let date_string = "first monday in january";
+        let description = "Rule based event";
+        let event_result = TextFileProvider::parse_event(category_string, date_string, description);
+        assert!(event_result.is_ok());
+        let event = event_result.unwrap();
+        assert_eq!(event.description(), description);
+        assert_eq!(event.category(), Category::new("rule-based", "January"));
     }
 }

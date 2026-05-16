@@ -1,11 +1,230 @@
-use crate::event::{Category, Event};
+use crate::event::{Category, Event, EventKind};
 use crate::filter::EventFilter;
 use crate::providers::{EventProvider, EventProviderError};
 use chrono::NaiveDate;
 use log::{debug, error, info};
 use sqlite::{Connection, State};
 use std::collections::HashMap;
+use std::fmt::format;
 use std::path::{Path, PathBuf};
+
+///Helper function to construct a WHERE clause for SQL query based on the filter.
+///Returns None if filter has categories but no matching category ids found in catefory table.
+///Returns empty string if filter has no conditions.
+fn make_where_clause(
+    filter: &EventFilter,
+    category_map: &HashMap<i64, Category>,
+) -> Option<String> {
+    let mut parts: Vec<String> = Vec::new();
+    debug!("Constructing where clause for filter: {:#?}", filter);
+    if filter.contains_categories() {
+        match make_categories_part(filter, category_map) {
+            Some(part) => parts.push(part),
+            None => {
+                info!(
+                    "Filter has categories, but no matching category ids found in category map. Quitting."
+                );
+                return None;
+            }
+        }
+    }
+    debug!(
+        "After processing categories, where clause parts: {:#?}",
+        parts
+    );
+    if filter.contains_month_day() {
+        match make_date_part(filter) {
+            Some(part) => parts.push(part),
+            None => debug!("No month and day part in filter"),
+        }
+    }
+    debug!(
+        "After processing month and day, where clause parts: {:#?}",
+        parts
+    );
+    if filter.contains_exclude_categories() {
+        match make_exclude_categories_part(filter, category_map) {
+            Some(part) => parts.push(part),
+            None => debug!("No exclude categories part in filter"),
+        }
+    }
+    debug!(
+        "After processing exclude categories, where clause parts: {:#?}",
+        parts
+    );
+    if filter.contains_text() {
+        match make_text_part(filter) {
+            Some(part) => parts.push(part),
+            None => debug!("No text part in filter"),
+        }
+    }
+    debug!("After processing text, where clause parts: {:#?}", parts);
+
+    let mut result = "".to_string();
+
+    debug!("Constructing where clause from parts: {:#?}", parts);
+
+    if !parts.is_empty() {
+        result.push_str("WHERE ");
+        result.push_str(&parts.join(" AND "));
+    }
+    debug!("Constructed where clause: '{}'", result);
+    Some(result)
+}
+
+///Helper function to create a date part for SQL query for filtering by month and day. Returns None if filter does not contain month and day.
+fn make_date_part(filter: &EventFilter) -> Option<String> {
+    if let Some(month_day) = filter.month_day() {
+        let md = format!("{:02}-{:02}", month_day.month(), month_day.day());
+        debug!("Constructed date part: '{}'", md);
+        Some(format!("strftime('%m-%d', event_date) = '{}'", md))
+    } else {
+        None
+    }
+}
+
+///Helper function to find all categories that match the filter categories and return their ids as strings. Returns None if no matches found.
+fn matching_category_ids(
+    filter_categories: Vec<Category>,
+    category_map: &HashMap<i64, Category>,
+) -> Option<Vec<String>> {
+    let mut category_ids: Vec<String> = Vec::new();
+    for filter_category in filter_categories {
+        for (category_id, category) in category_map {
+            if EventFilter::categories_match(&filter_category, category) {
+                category_ids.push(category_id.to_string());
+                break;
+            }
+        }
+    }
+    if !category_ids.is_empty() {
+        return Some(category_ids);
+    } else {
+        return None;
+    }
+}
+
+fn make_text_part(filter: &EventFilter) -> Option<String> {
+    if let Some(text) = filter.text() {
+        debug!("Constructed text part: '{}'", text);
+        Some(format!("event_description LIKE '%{}%'", text))
+    } else {
+        None
+    }
+}
+
+///Helper function to create an SQL WHERE clause for category filtering.
+///Returns None if filter has categories but no matching category ids found in category table.
+///Returns empty string if filter has no categories.
+fn make_categories_part(
+    filter: &EventFilter,
+    category_map: &HashMap<i64, Category>,
+) -> Option<String> {
+    if let Some(filter_categories) = filter.categories() {
+        debug!("Filter has categories: {:#?}", filter_categories);
+        match matching_category_ids(filter_categories, category_map) {
+            Some(ids) => return Some(format!("category_id IN ({})", ids.join(", "))),
+            None => return None,
+        };
+    } else {
+        Some("".to_string())
+    }
+}
+
+fn make_exclude_categories_part(
+    filter: &EventFilter,
+    category_map: &HashMap<i64, Category>,
+) -> Option<String> {
+    if let Some(exclude_categories) = filter.exclude_categories() {
+        match matching_category_ids(exclude_categories, category_map) {
+            Some(ids) => return Some(format!("category_id NOT IN ({})", ids.join(", "))),
+            None => return None,
+        };
+    } else {
+        None
+    }
+}
+
+fn get_categories(connection: &Connection) -> HashMap<i64, Category> {
+    let mut category_map: HashMap<i64, Category> = HashMap::new();
+    let category_query = "SELECT category_id, primary_name, secondary_name FROM category";
+    let mut statement = match connection.prepare(category_query) {
+        Ok(s) => s,
+        Err(e) => {
+            error!("Error preparing category query: {}", e);
+            return category_map;
+        }
+    };
+    while let Ok(State::Row) = statement.next() {
+        let category_id = statement.read::<i64, _>("category_id").unwrap();
+        let primary = statement.read::<String, _>("primary_name").unwrap();
+        let secondary = statement
+            .read::<Option<String>, _>("secondary_name")
+            .unwrap();
+        let category = match secondary {
+            Some(sec) => Category::new(&primary, &sec),
+            None => Category::from_primary(&primary),
+        };
+        category_map.insert(category_id, category);
+    }
+    debug!("Got category map: {:#?}", category_map);
+    category_map
+}
+
+/// Helper function to find the category id that matches the category in the filter exactly. Returns None if no match found.
+fn find_exact_category_id(connection: &Connection, category: &Category) -> Option<i64> {
+    let category_query = format!(
+        "SELECT category_id FROM category WHERE primary_name = '{}' AND secondary_name {}",
+        category.primary(),
+        category
+            .secondary()
+            .map_or("IS NULL".to_string(), |s| format!("= '{}'", s))
+    );
+    let mut statement = match connection.prepare(category_query) {
+        Ok(s) => s,
+        Err(e) => {
+            error!("Error preparing category id query: {}", e);
+            return None;
+        }
+    };
+    match statement.next() {
+        Ok(State::Row) => match statement.read::<i64, _>("category_id") {
+            Ok(id) => return Some(id),
+            Err(e) => {
+                error!("Error reading category id: {}", e);
+                return None;
+            }
+        },
+        Ok(_) => return None,
+        Err(e) => {
+            error!("Error executing category id query: {}", e);
+            return None;
+        }
+    };
+}
+
+fn add_category(connection: &Connection, category: &Category) -> Option<i64> {
+    let insert_category_query = format!(
+        "INSERT INTO category (primary_name, secondary_name) VALUES ('{}', {})",
+        category.primary(),
+        category
+            .secondary()
+            .map_or("NULL".to_string(), |s| format!("'{}'", s))
+    );
+    debug!(
+        "Constructed insert category query: '{}'",
+        insert_category_query
+    );
+    let id = match connection.execute(insert_category_query) {
+        Ok(_) => find_exact_category_id(connection, category),
+        Err(e) => {
+            error!("Error inserting category: {}", e);
+            None
+        }
+    };
+    debug!("Added category with id: {:?}", id);
+    id
+}
 
 pub struct SQLiteProvider {
     name: String,
@@ -18,177 +237,6 @@ impl SQLiteProvider {
             name: name.to_string(),
             path: path.to_path_buf(),
         }
-    }
-
-    fn make_where_clause(
-        &self,
-        filter: &EventFilter,
-        category_map: &HashMap<i64, Category>,
-    ) -> Option<String> {
-        let mut parts: Vec<String> = Vec::new();
-        debug!("Constructing where clause for filter: {:#?}", filter);
-        if filter.contains_categories() {
-            match self.make_categories_part(filter, category_map) {
-                Some(part) => parts.push(part),
-                None => {
-                    info!(
-                        "Filter has categories, but no matching category ids found in category map. Quitting."
-                    );
-                    return None;
-                }
-            }
-        }
-        debug!(
-            "After processing categories, where clause parts: {:#?}",
-            parts
-        );
-        if filter.contains_month_day() {
-            match self.make_date_part(filter) {
-                Some(part) => parts.push(part),
-                None => debug!("No month and day part in filter"),
-            }
-        }
-        debug!(
-            "After processing month and day, where clause parts: {:#?}",
-            parts
-        );
-        if filter.contains_exclude_categories() {
-            match self.make_exclude_categories_part(filter, category_map) {
-                Some(part) => parts.push(part),
-                None => debug!("No exclude categories part in filter"),
-            }
-        }
-        debug!(
-            "After processing exclude categories, where clause parts: {:#?}",
-            parts
-        );
-        if filter.contains_text() {
-            match self.make_text_part(filter) {
-                Some(part) => parts.push(part),
-                None => debug!("No text part in filter"),
-            }
-        }
-        debug!("After processing text, where clause parts: {:#?}", parts);
-
-        let mut result = "".to_string();
-
-        debug!("Constructing where clause from parts: {:#?}", parts);
-
-        if !parts.is_empty() {
-            result.push_str("WHERE ");
-            result.push_str(&parts.join(" AND "));
-        }
-        debug!("Constructed where clause: '{}'", result);
-        Some(result)
-    }
-
-    fn make_date_part(&self, filter: &EventFilter) -> Option<String> {
-        if let Some(month_day) = filter.month_day() {
-            let md = format!("{:02}-{:02}", month_day.month(), month_day.day());
-            debug!("Constructed date part: '{}'", md);
-            Some(format!("strftime('%m-%d', event_date) = '{}'", md))
-        } else {
-            None
-        }
-    }
-
-    fn matching_categories_ids(
-        &self,
-        filter_categories: Vec<Category>,
-        category_map: &HashMap<i64, Category>,
-    ) -> Option<Vec<String>> {
-        let mut category_ids: Vec<String> = Vec::new();
-        for filter_category in filter_categories {
-            for (category_id, category) in category_map {
-                if EventFilter::categories_match(&filter_category, category) {
-                    category_ids.push(category_id.to_string());
-                    break;
-                }
-            }
-        }
-        if !category_ids.is_empty() {
-            return Some(category_ids);
-        } else {
-            return None;
-        }
-    }
-
-    fn make_categories_part(
-        &self,
-        filter: &EventFilter,
-        category_map: &HashMap<i64, Category>,
-    ) -> Option<String> {
-        if let Some(filter_categories) = filter.categories() {
-            debug!("Filter has categories: {:#?}", filter_categories);
-            match self.matching_categories_ids(filter_categories, category_map) {
-                Some(ids) => return Some(format!("category_id IN ({})", ids.join(", "))),
-                None => return None,
-            };
-        } else {
-            Some("".to_string())
-        }
-    }
-
-    fn make_exclude_categories_part(
-        &self,
-        filter: &EventFilter,
-        category_map: &HashMap<i64, Category>,
-    ) -> Option<String> {
-        if let Some(exclude_categories) = filter.exclude_categories() {
-            match self.matching_categories_ids(exclude_categories, category_map) {
-                Some(ids) => return Some(format!("category_id NOT IN ({})", ids.join(", "))),
-                None => return None,
-            };
-        } else {
-            None
-        }
-    }
-
-    fn find_exact_category_id(
-        category_map: &HashMap<i64, Category>,
-        category: &Category,
-    ) -> Option<i64> {
-        for (category_id, cat) in category_map {
-            if cat == category {
-                return Some(*category_id);
-            }
-        }
-        None
-    }
-
-    fn make_text_part(&self, filter: &EventFilter) -> Option<String> {
-        if let Some(text) = filter.text() {
-            debug!("Constructed text part: '{}'", text);
-            Some(format!("event_description LIKE '%{}%'", text))
-        } else {
-            None
-        }
-    }
-
-    fn get_categories(&self, connection: &Connection) -> HashMap<i64, Category> {
-        let mut category_map: HashMap<i64, Category> = HashMap::new();
-        let category_query = "SELECT category_id, primary_name, secondary_name FROM category";
-        let mut statement = match connection.prepare(category_query) {
-            Ok(s) => s,
-            Err(e) => {
-                error!("Error preparing category query: {}", e);
-                return category_map;
-            }
-        };
-        while let Ok(State::Row) = statement.next() {
-            let category_id = statement.read::<i64, _>("category_id").unwrap();
-            let primary = statement.read::<String, _>("primary_name").unwrap();
-            let secondary = statement
-                .read::<Option<String>, _>("secondary_name")
-                .unwrap();
-            let category = match secondary {
-                Some(sec) => Category::new(&primary, &sec),
-                None => Category::from_primary(&primary),
-            };
-            category_map.insert(category_id, category);
-        }
-        debug!("Got category map: {:#?}", category_map);
-        category_map
     }
 }
 
@@ -205,10 +253,10 @@ impl EventProvider for SQLiteProvider {
                 return;
             }
         };
-        let category_map = self.get_categories(&connection);
+        let category_map = get_categories(&connection);
         debug!("Category map: {:#?}", category_map);
 
-        let where_clause = match self.make_where_clause(filter, &category_map) {
+        let where_clause = match make_where_clause(filter, &category_map) {
             Some(clause) => clause,
             None => return,
         };
@@ -270,18 +318,52 @@ impl EventProvider for SQLiteProvider {
     }
 
     fn add_event(&self, event: &Event) -> Result<(), EventProviderError> {
-        let connection = match Connection::open(self.path.clone()) {
-            Ok(c) => c,
-            Err(e) => {
-                error!("Error connecting to database: {}", e);
-                return Err(EventProviderError::OperationFailed);
+        match event.kind() {
+            EventKind::Singular(_) => {
+                let connection = match Connection::open(self.path.clone()) {
+                    Ok(c) => c,
+                    Err(e) => {
+                        error!("Error connecting to database: {}", e);
+                        return Err(EventProviderError::OperationFailed);
+                    }
+                };
+                let category_id = match find_exact_category_id(&connection, &event.category()) {
+                    Some(id) => id,
+                    None => match add_category(&connection, &event.category()) {
+                        Some(id) => id,
+                        None => {
+                            error!("Error adding category for event");
+                            return Err(EventProviderError::OperationFailed);
+                        }
+                    },
+                };
+                let insert_event_query = format!(
+                    "INSERT INTO event (event_date, event_description, category_id) VALUES ('{}', '{}', {})",
+                    NaiveDate::from_ymd_opt(
+                        event.year(),
+                        event.month_day().month(),
+                        event.month_day().day()
+                    )
+                    .unwrap()
+                    .format("%F"),
+                    event.description().replace("'", "''"),
+                    category_id
+                );
+                debug!("Constructed insert event query: '{}'", insert_event_query);
+                match connection.execute(insert_event_query) {
+                    Ok(_) => return Ok(()),
+                    Err(e) => {
+                        error!("Error inserting event: {}", e);
+                        return Err(EventProviderError::OperationFailed);
+                    }
+                };
             }
-        };
-        let category_map = self.get_categories(&connection);
-        let mut category_id: Option<i64> = None;
-        Err(EventProviderError::OperationFailed)
+            _ => {
+                error!("Only singular events are supported for adding");
+                return Err(EventProviderError::OperationNotSupported);
+            }
+        }
     }
-
     fn add_is_supported(&self) -> bool {
         true
     }
@@ -289,18 +371,15 @@ impl EventProvider for SQLiteProvider {
 
 #[cfg(test)]
 mod tests {
-    use crate::event::Category;
-    use crate::event::Event;
+    use super::*;
     use crate::event::MonthDay;
     use crate::filter::FilterBuilder;
-    use crate::providers::EventProvider;
-    use crate::providers::SQLiteProvider;
-    use chrono::NaiveDate;
-    use sqlite::Connection;
     use std::fs;
-    use std::path::Path;
 
-    //Funktion tekemisessä hyödynnetty tekoälyn apua
+    fn init() {
+        let _ = env_logger::builder().is_test(true).try_init();
+    }
+
     fn setup_test_db(path: &Path) {
         let connection = Connection::open(path).unwrap();
 
@@ -534,5 +613,35 @@ mod tests {
         provider.get_events(&filter, &mut events);
         let _ = std::fs::remove_file(&path);
         assert_eq!(events.len(), 0);
+    }
+
+    #[test]
+    fn add_event_singular_event_successfully() {
+        let path = Path::new("test_temp_add.db");
+        setup_test_db(path);
+        let provider = SQLiteProvider::new("test", path);
+        let event = Event::new_singular(
+            NaiveDate::from_ymd_opt(2023, 4, 10).unwrap(),
+            String::from("Test event"),
+            Category::new("test", "add"),
+        );
+        let result = provider.add_event(&event);
+        let _ = std::fs::remove_file(&path);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn add_annual_event_fails() {
+        let path = Path::new("test_temp_add2.db");
+        setup_test_db(path);
+        let provider = SQLiteProvider::new("test", path);
+        let event = Event::new_annual(
+            MonthDay::new(4, 10).unwrap(),
+            String::from("Test annual event"),
+            Category::new("test", "add"),
+        );
+        let result = provider.add_event(&event);
+        let _ = std::fs::remove_file(&path);
+        assert!(result.is_err());
     }
 }
