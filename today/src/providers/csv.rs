@@ -1,40 +1,25 @@
 use crate::event::{Category, Event, EventKind, MonthDay, Rule};
 use crate::filter::EventFilter;
 use crate::providers::{EventProvider, EventProviderError};
-use chrono::{Datelike, NaiveDate, Local};
+use chrono::{Datelike, Local, NaiveDate};
 use csv::ReaderBuilder;
 use log::{debug, error};
 use std::fs::OpenOptions;
 use std::io::{BufWriter, ErrorKind, Write};
 use std::path::{Path, PathBuf};
 
-pub struct CSVFileProvider {
-    name: String,
-    path: PathBuf,
-}
 
-impl CSVFileProvider {
-    pub fn new(name: &str, path: &Path) -> Self {
-        Self {
-            name: name.to_string(),
-            path: path.to_path_buf(),
-        }
-    }
-    fn parse_event(
-        category_string: &str,
-        date_string: &str,
-        description: &str,
-    ) -> Option<Event> {
+fn parse_event(category_string: &str, date_string: &str, description: &str) -> Option<Event> {
         let is_rule_based = !date_string.contains("-");
         let is_yearless = date_string.starts_with("--");
 
         let date_string = if is_yearless {
             let today = Local::now().date_naive();
-            debug!("today: {}",today);
+            debug!("today: {}", today);
             debug!("today.leap_year: {}", today.leap_year());
             debug!("date_string: {}", date_string);
-            if !today.leap_year() && date_string=="--02-29" {
-                return None
+            if !today.leap_year() && date_string == "--02-29" {
+                return None;
             }
             let year_string = format!("{:04}-", today.year());
             date_string.replace("--", &year_string)
@@ -80,8 +65,20 @@ impl CSVFileProvider {
             }
         }
     }
+
+pub struct CSVFileProvider {
+    name: String,
+    path: PathBuf,
 }
 
+impl CSVFileProvider {
+    pub fn new(name: &str, path: &Path) -> Self {
+        Self {
+            name: name.to_string(),
+            path: path.to_path_buf(),
+        }
+    }
+}
 
 impl EventProvider for CSVFileProvider {
     fn name(&self) -> String {
@@ -111,7 +108,7 @@ impl EventProvider for CSVFileProvider {
             let date_string = record[0].to_string();
             let description = record[1].to_string();
             let category_string = record[2].to_string();
-            let event = match Self::parse_event(&category_string, &date_string, &description) {
+            let event = match parse_event(&category_string, &date_string, &description) {
                 Some(e) => e,
                 None => {
                     continue;
@@ -192,7 +189,7 @@ impl EventProvider for CSVFileProvider {
 mod tests {
 
     use super::*;
-    use crate::{filter::FilterBuilder};
+    use crate::filter::FilterBuilder;
 
     //Funktion tekemisessä hyödynnetty tekoälyä
     fn create_test_csv_file(path: &Path) {

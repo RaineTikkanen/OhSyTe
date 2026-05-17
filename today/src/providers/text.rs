@@ -7,6 +7,71 @@ use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, BufWriter, ErrorKind, Write};
 use std::path::{Path, PathBuf};
 
+fn parse_event(category_string: &str, date_string: &str, description: &str) -> Option<Event> {
+    debug!("date_string: {}", date_string);
+    debug!("category_string: {}", category_string);
+    debug!("description: {}", description);
+
+    let category = Category::from_str(&category_string);
+    let is_yearless = date_string.starts_with("--");
+    debug!("is_yearless: {}", is_yearless);
+
+    let date_string = if is_yearless {
+        let today = Local::now().date_naive();
+        debug!("today: {}", today);
+        debug!("today.leap_year: {}", today.leap_year());
+        debug!("date_string: {}", date_string);
+        if !today.leap_year() && date_string == "--02-29" {
+            return None;
+        }
+        let year_string = format!("{:04}-", today.year());
+        date_string.replace("--", &year_string)
+    } else {
+        date_string.to_string()
+    };
+    if !date_string.contains("-") {
+        debug!(
+            "Parsing rule-based event with date string '{}'",
+            date_string
+        );
+        let rule = match Rule::parse(&date_string) {
+            Ok(r) => r,
+            Err(e) => {
+                error!("Error parsing rule '{}': {}", date_string, e);
+                return None;
+            }
+        };
+        return Some(Event::new_rule_based(
+            rule,
+            description.to_string(),
+            category,
+        ));
+    } else {
+        debug!(
+            "Parsing date-based event with date string '{}'",
+            date_string
+        );
+        match NaiveDate::parse_from_str(&date_string, "%F") {
+            Ok(date) => {
+                if is_yearless {
+                    return Some(Event::new_annual(
+                        //Luotetaan chrono paketin validiointiin päivämäärän oikeellisuudesta, joten unwrap on turvallinen tässä
+                        MonthDay::new(date.month(), date.day()).unwrap(),
+                        description.to_string(),
+                        category,
+                    ));
+                } else {
+                    return Some(Event::new_singular(date, description.to_string(), category));
+                }
+            }
+            Err(e) => {
+                error!("Error parsing date '{}': {}", date_string, e);
+                return None;
+            }
+        }
+    }
+}
+
 pub struct TextFileProvider {
     name: String,
     path: PathBuf,
@@ -17,75 +82,6 @@ impl TextFileProvider {
         Self {
             name: name.to_string(),
             path: path.to_path_buf(),
-        }
-    }
-
-    fn parse_event(
-        category_string: &str,
-        date_string: &str,
-        description: &str,
-    ) -> Option<Event> {
-        debug!("date_string: {}", date_string);
-        debug!("category_string: {}", category_string);
-        debug!("description: {}", description);
-
-        let category = Category::from_str(&category_string);
-        let is_yearless = date_string.starts_with("--");
-        debug!("is_yearless: {}", is_yearless);
-
-        let date_string = if is_yearless {
-            let today = Local::now().date_naive();
-            debug!("today: {}",today);
-            debug!("today.leap_year: {}", today.leap_year());
-            debug!("date_string: {}", date_string);
-            if !today.leap_year() && date_string=="--02-29" {
-                return None
-            }
-            let year_string = format!("{:04}-", today.year());
-            date_string.replace("--", &year_string)
-        } else {
-            date_string.to_string()
-        };
-        if !date_string.contains("-") {
-            debug!(
-                "Parsing rule-based event with date string '{}'",
-                date_string
-            );
-            let rule = match Rule::parse(&date_string) {
-                Ok(r) => r,
-                Err(e) => {
-                    error!("Error parsing rule '{}': {}", date_string, e);
-                    return None;
-                }
-            };
-            return Some(Event::new_rule_based(
-                rule,
-                description.to_string(),
-                category,
-            ));
-        } else {
-            debug!(
-                "Parsing date-based event with date string '{}'",
-                date_string
-            );
-            match NaiveDate::parse_from_str(&date_string, "%F") {
-                Ok(date) => {
-                    if is_yearless {
-                        return Some(Event::new_annual(
-                            //Luotetaan chrono paketin validiointiin päivämäärän oikeellisuudesta, joten unwrap on turvallinen tässä
-                            MonthDay::new(date.month(), date.day()).unwrap(),
-                            description.to_string(),
-                            category,
-                        ));
-                    } else {
-                        return Some(Event::new_singular(date, description.to_string(), category));
-                    }
-                }
-                Err(e) => {
-                    error!("Error parsing date '{}': {}", date_string, e);
-                    return None;
-                }
-            }
         }
     }
 }
@@ -104,8 +100,7 @@ impl EventProvider for TextFileProvider {
     }
 
     fn get_events(&self, filter: &EventFilter, events: &mut Vec<Event>) {
-        let result = File::open(self.path.clone());
-        let file = match result {
+        let file = match File::open(self.path.clone()) {
             Ok(f) => f,
             Err(e) => {
                 error!("Error opening file {:?}: {}", self.path, e);
@@ -141,13 +136,12 @@ impl EventProvider for TextFileProvider {
                     state = ReadingState::Separator;
                 }
                 ReadingState::Separator => {
-                    let event =
-                        match Self::parse_event(&category_string, &date_string, &description) {
-                            Some(e) => e,
-                            None => {
-                                continue;
-                            }
-                        };
+                    let event = match parse_event(&category_string, &date_string, &description) {
+                        Some(e) => e,
+                        None => {
+                            continue;
+                        }
+                    };
 
                     if filter.accepts(&event) {
                         events.push(event);
@@ -409,7 +403,7 @@ rule-based/January
         let category_string = "testing/test";
         let date_string = "2024-01-01";
         let description = "Event 1";
-        let event_result = TextFileProvider::parse_event(category_string, date_string, description);
+        let event_result = parse_event(category_string, date_string, description);
         assert!(event_result.is_some());
         let event = event_result.unwrap();
         assert_eq!(event.description(), description);
@@ -425,7 +419,7 @@ rule-based/January
         let category_string = "testing/test";
         let date_string = "--02-14";
         let description = "Annual Event";
-        let event_result = TextFileProvider::parse_event(category_string, date_string, description);
+        let event_result = parse_event(category_string, date_string, description);
         assert!(event_result.is_some());
         let event = event_result.unwrap();
         assert_eq!(event.description(), description);
@@ -441,7 +435,7 @@ rule-based/January
         let category_string = "rule-based/January";
         let date_string = "first monday in january";
         let description = "Rule based event";
-        let event_result = TextFileProvider::parse_event(category_string, date_string, description);
+        let event_result = parse_event(category_string, date_string, description);
         assert!(event_result.is_some());
         let event = event_result.unwrap();
         assert_eq!(event.description(), description);

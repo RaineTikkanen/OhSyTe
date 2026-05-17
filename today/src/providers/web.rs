@@ -74,9 +74,9 @@ impl EventProvider for WebProvider {
         );
 
         for json_event in json_events {
-            let date = match NaiveDate::parse_from_str(&json_event.date, "%F"){
-                Ok(d)=> d,
-                Err(e)=> {
+            let date = match NaiveDate::parse_from_str(&json_event.date, "%F") {
+                Ok(d) => d,
+                Err(e) => {
                     error!("Unable to parse date: {}", e);
                     return;
                 }

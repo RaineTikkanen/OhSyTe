@@ -94,7 +94,7 @@ fn matching_category_ids(
         for (category_id, category) in category_map {
             debug!("checking if '{}' matches '{}", filter_category, category);
             if EventFilter::categories_match(&filter_category, category) {
-                debug!{"'{}' matches '{}", filter_category, category}
+                debug! {"'{}' matches '{}", filter_category, category}
                 category_ids.push(category_id.to_string());
             }
         }
@@ -270,7 +270,7 @@ impl EventProvider for SQLiteProvider {
         event_query.push_str(&where_clause);
         debug!("Constructed event query: '{}'", event_query);
         let mut statement = match connection.prepare(event_query) {
-            Ok(s) =>s,
+            Ok(s) => s,
             Err(e) => {
                 error!("Error preparing event query: {}", e);
                 return;
@@ -281,7 +281,7 @@ impl EventProvider for SQLiteProvider {
                 Ok(s) => {
                     debug!("date_string:{}", s);
                     s
-                },
+                }
                 Err(e) => {
                     error!("Error: {}", e);
                     continue;
@@ -291,7 +291,7 @@ impl EventProvider for SQLiteProvider {
                 Ok(d) => {
                     debug!("date: {}", d);
                     d
-                },
+                }
                 Err(e) => {
                     error!("Error: {}", e);
                     continue;
@@ -301,7 +301,7 @@ impl EventProvider for SQLiteProvider {
                 Ok(d) => {
                     debug!("description: {}", d);
                     d
-                },
+                }
                 Err(e) => {
                     error!("Error: {}", e);
                     continue;
@@ -309,9 +309,9 @@ impl EventProvider for SQLiteProvider {
             };
             let category_id = match statement.read::<i64, _>("category_id") {
                 Ok(c) => {
-                debug!("category_id: {}", c);
-                c
-                },
+                    debug!("category_id: {}", c);
+                    c
+                }
                 Err(e) => {
                     error!("Error: {}", e);
                     continue;
@@ -321,7 +321,7 @@ impl EventProvider for SQLiteProvider {
                 Some(c) => {
                     debug!("category: {}", c);
                     c
-                },
+                }
                 None => {
                     error!("Error: could not find category matching the category id");
                     continue;
@@ -393,7 +393,6 @@ mod tests {
     use crate::event::{MonthDay, Rule};
     use crate::filter::FilterBuilder;
     use std::fs;
-
 
     fn setup_test_db(path: &Path) {
         let connection = Connection::open(path).unwrap();
@@ -683,7 +682,7 @@ mod tests {
     }
 
     #[test]
-    fn add_rule_based_event_fails(){
+    fn add_rule_based_event_fails() {
         let path = Path::new("test_temp_add3.db");
         setup_test_db(path);
         let provider = SQLiteProvider::new("test", path);

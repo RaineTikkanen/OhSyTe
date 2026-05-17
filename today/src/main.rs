@@ -217,10 +217,10 @@ fn main() {
                     info!("Showing providers");
                     for provider in config.providers() {
                         print!("{}", provider.name());
-                        match provider.kind().as_str(){
-                            "text"|"csv"=>println!(" *"),
+                        match provider.kind().as_str() {
+                            "text" | "csv" => println!(" *"),
                             "sqlite" => println!(" **"),
-                            _=> println!(""),
+                            _ => println!(""),
                         }
                     }
                     println!("\n* = supports adding events");
