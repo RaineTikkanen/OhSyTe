@@ -87,16 +87,20 @@ fn matching_category_ids(
     filter_categories: Vec<Category>,
     category_map: &HashMap<i64, Category>,
 ) -> Option<Vec<String>> {
+    debug!("filter_categories: {:?}", filter_categories);
+    debug!("category_map: {:?}", category_map);
     let mut category_ids: Vec<String> = Vec::new();
     for filter_category in filter_categories {
         for (category_id, category) in category_map {
+            debug!("checking if '{}' matches '{}", filter_category, category);
             if EventFilter::categories_match(&filter_category, category) {
+                debug!{"'{}' matches '{}", filter_category, category}
                 category_ids.push(category_id.to_string());
-                break;
             }
         }
     }
     if !category_ids.is_empty() {
+        debug!("matching category ids: {:?}", category_ids);
         return Some(category_ids);
     } else {
         return None;
@@ -266,7 +270,7 @@ impl EventProvider for SQLiteProvider {
         event_query.push_str(&where_clause);
         debug!("Constructed event query: '{}'", event_query);
         let mut statement = match connection.prepare(event_query) {
-            Ok(s) => s,
+            Ok(s) =>s,
             Err(e) => {
                 error!("Error preparing event query: {}", e);
                 return;
@@ -274,35 +278,50 @@ impl EventProvider for SQLiteProvider {
         };
         while let Ok(State::Row) = statement.next() {
             let date_string = match statement.read::<String, _>("event_date") {
-                Ok(s) => s,
+                Ok(s) => {
+                    debug!("date_string:{}", s);
+                    s
+                },
                 Err(e) => {
                     error!("Error: {}", e);
                     continue;
                 }
             };
             let date = match NaiveDate::parse_from_str(&date_string, "%F") {
-                Ok(d) => d,
+                Ok(d) => {
+                    debug!("date: {}", d);
+                    d
+                },
                 Err(e) => {
                     error!("Error: {}", e);
                     continue;
                 }
             };
             let description = match statement.read::<String, _>("event_description") {
-                Ok(d) => d,
+                Ok(d) => {
+                    debug!("description: {}", d);
+                    d
+                },
                 Err(e) => {
                     error!("Error: {}", e);
                     continue;
                 }
             };
             let category_id = match statement.read::<i64, _>("category_id") {
-                Ok(c) => c,
+                Ok(c) => {
+                debug!("category_id: {}", c);
+                c
+                },
                 Err(e) => {
                     error!("Error: {}", e);
                     continue;
                 }
             };
             let category = match category_map.get(&category_id) {
-                Some(c) => c,
+                Some(c) => {
+                    debug!("category: {}", c);
+                    c
+                },
                 None => {
                     error!("Error: could not find category matching the category id");
                     continue;
@@ -516,7 +535,7 @@ mod tests {
     }
 
     #[test]
-    fn successful_read_events_with_exclude_category_filter() {
+    fn successful_read_events_with_exclude_exact_category_filter() {
         let path = Path::new("test_temp6.db");
 
         setup_test_db(path);
@@ -524,6 +543,28 @@ mod tests {
         let mut events: Vec<Event> = Vec::new();
         let provider = SQLiteProvider::new("test", path);
         let exclude_categories = Some(vec![Category::new("programming", "technology")]);
+        let filter = FilterBuilder::new()
+            .exclude_categories(exclude_categories)
+            .build();
+        provider.get_events(&filter, &mut events);
+
+        let _ = fs::remove_file(path);
+        let test_events = get_test_events();
+
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0], test_events[0]);
+        assert_eq!(events[1], test_events[2]);
+    }
+
+    #[test]
+    fn successful_read_events_with_exclude_primary_category_filter() {
+        let path = Path::new("test_exclude_primary.db");
+
+        setup_test_db(path);
+
+        let mut events: Vec<Event> = Vec::new();
+        let provider = SQLiteProvider::new("test", path);
+        let exclude_categories = Some(vec![Category::from_primary("programming")]);
         let filter = FilterBuilder::new()
             .exclude_categories(exclude_categories)
             .build();
