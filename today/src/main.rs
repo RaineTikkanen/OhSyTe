@@ -10,7 +10,7 @@ use birthday::handle_birthday;
 
 use today::event::{Category, Event, MonthDay, Rule};
 
-use today::filter::{EventFilter, FilterBuilder};
+use today::filter::FilterBuilder;
 
 #[derive(Subcommand, Debug, Clone)]
 enum Command {
@@ -123,7 +123,7 @@ fn main() {
         month_day.month(),
         month_day.day()
     );
-    let filter: EventFilter;
+
     let exclude_categories: Option<Vec<Category>>;
     let categories: Option<Vec<Category>>;
     let description: Option<String>;
@@ -152,7 +152,7 @@ fn main() {
         description = None;
     }
 
-    filter = FilterBuilder::new()
+    let filter = FilterBuilder::new()
         .month_day(month_day)
         .exclude_categories(exclude_categories)
         .categories(categories)

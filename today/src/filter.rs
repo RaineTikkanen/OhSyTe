@@ -123,7 +123,7 @@ pub fn categories_match(filter_category: &Category, event_category: &Category) -
             Some(event_secondary) => {
                 filter_category.primary() == event_category.primary()
                     || filter_category.primary() == event_secondary
-            }
+            },
             None => filter_category.primary() == event_category.primary(),
         },
     }
@@ -147,8 +147,8 @@ impl FilterBuilder {
     /// #
     /// let filter = FilterBuilder::new()
     ///     .month_day(MonthDay::new(3, 5).unwrap())
-    ///     .categories(Some(vec![Category::new("programming", "rust")]))
-    ///     .exclude_categories(Some(vec![Category::new("holiday", "christmas")]))
+    ///     .categories(Some(vec![Category::from_primary("programming")]))
+    ///     .exclude_categories(Some(vec![Category::from_primary("javascript")]))
     ///     .text(Some("test".to_string()))
     ///     .build();
     /// ```
