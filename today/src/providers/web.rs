@@ -74,7 +74,13 @@ impl EventProvider for WebProvider {
         );
 
         for json_event in json_events {
-            let date = NaiveDate::parse_from_str(&json_event.date, "%F").unwrap();
+            let date = match NaiveDate::parse_from_str(&json_event.date, "%F"){
+                Ok(d)=> d,
+                Err(e)=> {
+                    error!("Unable to parse date: {}", e);
+                    return;
+                }
+            };
             let category = Category::from_str(&json_event.category);
             let event = Event::new_singular(date, json_event.description, category);
             if filter.accepts(&event) {
@@ -85,5 +91,9 @@ impl EventProvider for WebProvider {
 
     fn add_event(&self, _event: &Event) -> Result<(), EventProviderError> {
         return Err(EventProviderError::OperationNotSupported);
+    }
+
+    fn add_is_supported(&self) -> bool {
+        false
     }
 }

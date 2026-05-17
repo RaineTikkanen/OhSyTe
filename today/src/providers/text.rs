@@ -1,23 +1,15 @@
 use crate::event::{Category, Event, EventKind, MonthDay, Rule};
 use crate::filter::EventFilter;
 use crate::providers::{EventProvider, EventProviderError};
-use chrono::{Datelike, NaiveDate};
+use chrono::{Datelike, Local, NaiveDate};
 use log::{debug, error};
-use serde::de;
-use std::f32::consts::E;
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, BufWriter, ErrorKind, Write};
 use std::path::{Path, PathBuf};
-use strum_macros::Display;
 
 pub struct TextFileProvider {
     name: String,
     path: PathBuf,
-}
-
-#[derive(Debug)]
-enum TextFileProviderError {
-    ParseError,
 }
 
 impl TextFileProvider {
@@ -32,7 +24,7 @@ impl TextFileProvider {
         category_string: &str,
         date_string: &str,
         description: &str,
-    ) -> Result<Event, TextFileProviderError> {
+    ) -> Option<Event> {
         debug!("date_string: {}", date_string);
         debug!("category_string: {}", category_string);
         debug!("description: {}", description);
@@ -42,7 +34,15 @@ impl TextFileProvider {
         debug!("is_yearless: {}", is_yearless);
 
         let date_string = if is_yearless {
-            date_string.replace("--", "2000-")
+            let today = Local::now().date_naive();
+            debug!("today: {}",today);
+            debug!("today.leap_year: {}", today.leap_year());
+            debug!("date_string: {}", date_string);
+            if !today.leap_year() && date_string=="--02-29" {
+                return None
+            }
+            let year_string = format!("{:04}-", today.year());
+            date_string.replace("--", &year_string)
         } else {
             date_string.to_string()
         };
@@ -55,10 +55,10 @@ impl TextFileProvider {
                 Ok(r) => r,
                 Err(e) => {
                     error!("Error parsing rule '{}': {}", date_string, e);
-                    return Err(TextFileProviderError::ParseError);
+                    return None;
                 }
             };
-            return Ok(Event::new_rule_based(
+            return Some(Event::new_rule_based(
                 rule,
                 description.to_string(),
                 category,
@@ -71,19 +71,19 @@ impl TextFileProvider {
             match NaiveDate::parse_from_str(&date_string, "%F") {
                 Ok(date) => {
                     if is_yearless {
-                        return Ok(Event::new_annual(
+                        return Some(Event::new_annual(
                             //Luotetaan chrono paketin validiointiin päivämäärän oikeellisuudesta, joten unwrap on turvallinen tässä
                             MonthDay::new(date.month(), date.day()).unwrap(),
                             description.to_string(),
                             category,
                         ));
                     } else {
-                        return Ok(Event::new_singular(date, description.to_string(), category));
+                        return Some(Event::new_singular(date, description.to_string(), category));
                     }
                 }
                 Err(e) => {
                     error!("Error parsing date '{}': {}", date_string, e);
-                    return Err(TextFileProviderError::ParseError);
+                    return None;
                 }
             }
         }
@@ -143,9 +143,8 @@ impl EventProvider for TextFileProvider {
                 ReadingState::Separator => {
                     let event =
                         match Self::parse_event(&category_string, &date_string, &description) {
-                            Ok(e) => e,
-                            Err(e) => {
-                                error!("Error parsing event from file {:?}: {:?}", self.path, e);
+                            Some(e) => e,
+                            None => {
                                 continue;
                             }
                         };
@@ -411,7 +410,7 @@ rule-based/January
         let date_string = "2024-01-01";
         let description = "Event 1";
         let event_result = TextFileProvider::parse_event(category_string, date_string, description);
-        assert!(event_result.is_ok());
+        assert!(event_result.is_some());
         let event = event_result.unwrap();
         assert_eq!(event.description(), description);
         assert_eq!(event.category(), Category::new("testing", "test"));
@@ -427,7 +426,7 @@ rule-based/January
         let date_string = "--02-14";
         let description = "Annual Event";
         let event_result = TextFileProvider::parse_event(category_string, date_string, description);
-        assert!(event_result.is_ok());
+        assert!(event_result.is_some());
         let event = event_result.unwrap();
         assert_eq!(event.description(), description);
         assert_eq!(event.category(), Category::new("testing", "test"));
@@ -443,7 +442,7 @@ rule-based/January
         let date_string = "first monday in january";
         let description = "Rule based event";
         let event_result = TextFileProvider::parse_event(category_string, date_string, description);
-        assert!(event_result.is_ok());
+        assert!(event_result.is_some());
         let event = event_result.unwrap();
         assert_eq!(event.description(), description);
         assert_eq!(event.category(), Category::new("rule-based", "January"));

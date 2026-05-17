@@ -93,6 +93,7 @@ fn handle_categories(categories_string: &str) -> Vec<Category> {
 
 fn main() {
     env_logger::init();
+    info!("Logger initialized");
 
     let args = Args::parse();
     debug!("args: {:?}", args);
@@ -215,8 +216,15 @@ fn main() {
                 Some(Command::Providers) => {
                     info!("Showing providers");
                     for provider in config.providers() {
-                        println!("{}", provider.name());
+                        print!("{}", provider.name());
+                        match provider.kind().as_str(){
+                            "text"|"csv"=>println!(" *"),
+                            "sqlite" => println!(" **"),
+                            _=> println!(""),
+                        }
                     }
+                    println!("\n* = supports adding events");
+                    println!("** = supports adding singular events only");
                 }
                 Some(Command::Add {
                     provider_name,

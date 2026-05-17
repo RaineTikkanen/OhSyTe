@@ -288,14 +288,14 @@ impl Rule {
 
         let ordinal = match Ordinal::from_str(&parts[0]) {
             Ok(ord) => ord,
-            Err(e) => {
+            Err(_) => {
                 return Err(RuleParseError::InvalidOrdinal);
             }
         };
 
         let weekday = match Weekday::from_str(&parts[1]) {
             Ok(wd) => wd,
-            Err(e) => {
+            Err(_) => {
                 return Err(RuleParseError::InvalidWeekday);
             }
         };
@@ -306,7 +306,7 @@ impl Rule {
 
         let month = match parts[3].parse::<Month>() {
             Ok(m) => m,
-            Err(e) => {
+            Err(_) => {
                 return Err(RuleParseError::InvalidMonth);
             }
         };

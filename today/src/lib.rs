@@ -23,6 +23,9 @@ impl ProviderConfig {
     pub fn name(&self) -> String {
         self.name.clone()
     }
+    pub fn kind(&self) -> String {
+        self.kind.clone()
+    }
 }
 
 #[derive(Deserialize, Debug)]

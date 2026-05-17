@@ -5,7 +5,6 @@ use chrono::NaiveDate;
 use log::{debug, error, info};
 use sqlite::{Connection, State};
 use std::collections::HashMap;
-use std::fmt::format;
 use std::path::{Path, PathBuf};
 
 ///Helper function to construct a WHERE clause for SQL query based on the filter.
@@ -376,9 +375,6 @@ mod tests {
     use crate::filter::FilterBuilder;
     use std::fs;
 
-    fn init() {
-        let _ = env_logger::builder().is_test(true).try_init();
-    }
 
     fn setup_test_db(path: &Path) {
         let connection = Connection::open(path).unwrap();
