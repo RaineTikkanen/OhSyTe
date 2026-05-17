@@ -22,25 +22,6 @@ impl EventFilter {
         }
     }
 
-    /// Checks if a filter category matches an event category.
-    /// Category matches if:
-    /// - filter category has a secondary category of "*" and its primary category matches the event's primary category, or
-    /// - filter category matches the event category exactly, or
-    /// - filter category has no secondary category and its primary category matches either the event's primary category or the event's secondary category (if it exists).
-    pub fn categories_match(filter_category: &Category, event_category: &Category) -> bool {
-        match filter_category.secondary() {
-            Some(s) if s == "*" => filter_category.primary() == event_category.primary(),
-            Some(_) => filter_category == event_category,
-            None => match event_category.secondary() {
-                Some(event_secondary) => {
-                    filter_category.primary() == event_category.primary()
-                        || filter_category.primary() == event_secondary
-                }
-                None => filter_category.primary() == event_category.primary(),
-            },
-        }
-    }
-
     ///Checks if an event matches the filter. An event matches the filter if it matches all the filter options. If the filter has no options, it matches all events.
     pub fn accepts(&self, event: &Event) -> bool {
         if self.options.is_empty() {
@@ -54,14 +35,14 @@ impl EventFilter {
                 FilterOption::MonthDay(month_day) => *month_day == event.month_day(),
                 FilterOption::Categories(categories) => categories
                     .iter()
-                    .any(|category| Self::categories_match(category, &event.category())),
+                    .any(|category| categories_match(category, &event.category())),
                 FilterOption::Text(text) => event
                     .description()
                     .to_lowercase()
                     .contains(text.to_lowercase().as_str()),
                 FilterOption::ExcludeCategories(categories) => !categories
                     .iter()
-                    .any(|category| Self::categories_match(category, &event.category())),
+                    .any(|category| categories_match(category, &event.category())),
             };
             results.push(result);
         }
@@ -126,6 +107,25 @@ impl EventFilter {
             }
         }
         None
+    }
+}
+
+/// Checks if a filter category matches an event category.
+/// Category matches if:
+/// - filter category has a secondary category of "*" and its primary category matches the event's primary category, or
+/// - filter category matches the event category exactly, or
+/// - filter category has no secondary category and its primary category matches either the event's primary category or the event's secondary category (if it exists).
+pub fn categories_match(filter_category: &Category, event_category: &Category) -> bool {
+    match filter_category.secondary() {
+        Some(s) if s == "*" => filter_category.primary() == event_category.primary(),
+        Some(_) => filter_category == event_category,
+        None => match event_category.secondary() {
+            Some(event_secondary) => {
+                filter_category.primary() == event_category.primary()
+                    || filter_category.primary() == event_secondary
+            }
+            None => filter_category.primary() == event_category.primary(),
+        },
     }
 }
 

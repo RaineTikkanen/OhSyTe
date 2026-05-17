@@ -8,63 +8,62 @@ use std::fs::OpenOptions;
 use std::io::{BufWriter, ErrorKind, Write};
 use std::path::{Path, PathBuf};
 
-
 fn parse_event(category_string: &str, date_string: &str, description: &str) -> Option<Event> {
-        let is_rule_based = !date_string.contains("-");
-        let is_yearless = date_string.starts_with("--");
+    let is_rule_based = !date_string.contains("-");
+    let is_yearless = date_string.starts_with("--");
 
-        let date_string = if is_yearless {
-            let today = Local::now().date_naive();
-            debug!("today: {}", today);
-            debug!("today.leap_year: {}", today.leap_year());
-            debug!("date_string: {}", date_string);
-            if !today.leap_year() && date_string == "--02-29" {
+    let date_string = if is_yearless {
+        let today = Local::now().date_naive();
+        debug!("today: {}", today);
+        debug!("today.leap_year: {}", today.leap_year());
+        debug!("date_string: {}", date_string);
+        if !today.leap_year() && date_string == "--02-29" {
+            return None;
+        }
+        let year_string = format!("{:04}-", today.year());
+        date_string.replace("--", &year_string)
+    } else {
+        date_string.to_string()
+    };
+    if is_rule_based {
+        debug!(
+            "Parsing rule based event with date string '{}'",
+            date_string
+        );
+        let rule = match Rule::parse(&date_string) {
+            Ok(r) => r,
+            Err(e) => {
+                error!("Error parsing rule '{}': {}", date_string, e);
                 return None;
             }
-            let year_string = format!("{:04}-", today.year());
-            date_string.replace("--", &year_string)
-        } else {
-            date_string.to_string()
         };
-        if is_rule_based {
-            debug!(
-                "Parsing rule based event with date string '{}'",
-                date_string
-            );
-            let rule = match Rule::parse(&date_string) {
-                Ok(r) => r,
-                Err(e) => {
-                    error!("Error parsing rule '{}': {}", date_string, e);
-                    return None;
+        return Some(Event::new_rule_based(
+            rule,
+            description.to_string(),
+            Category::from_str(&category_string),
+        ));
+    } else {
+        match NaiveDate::parse_from_str(&date_string, "%F") {
+            Ok(date) => {
+                let category = Category::from_str(&category_string);
+                if is_yearless {
+                    return Some(Event::new_annual(
+                        //Luotetaan chrono paketin validiointiin päivämäärän oikeellisuudesta, joten unwrap on turvallinen tässä
+                        MonthDay::new(date.month(), date.day()).unwrap(),
+                        description.to_string(),
+                        category,
+                    ));
+                } else {
+                    return Some(Event::new_singular(date, description.to_string(), category));
                 }
-            };
-            return Some(Event::new_rule_based(
-                rule,
-                description.to_string(),
-                Category::from_str(&category_string),
-            ));
-        } else {
-            match NaiveDate::parse_from_str(&date_string, "%F") {
-                Ok(date) => {
-                    let category = Category::from_str(&category_string);
-                    if is_yearless {
-                        return Some(Event::new_annual(
-                            //Luotetaan chrono paketin validiointiin päivämäärän oikeellisuudesta, joten unwrap on turvallinen tässä
-                            MonthDay::new(date.month(), date.day()).unwrap(),
-                            description.to_string(),
-                            category,
-                        ));
-                    } else {
-                        return Some(Event::new_singular(date, description.to_string(), category));
-                    }
-                }
-                Err(e) => {
-                    error!("Error parsing date '{}': {}", date_string, e);
-                    return None;
-                }
+            }
+            Err(e) => {
+                error!("Error parsing date '{}': {}", date_string, e);
+                return None;
             }
         }
     }
+}
 
 pub struct CSVFileProvider {
     name: String,

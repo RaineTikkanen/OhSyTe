@@ -1,5 +1,5 @@
 use crate::event::{Category, Event, EventKind};
-use crate::filter::EventFilter;
+use crate::filter::{EventFilter, categories_match};
 use crate::providers::{EventProvider, EventProviderError};
 use chrono::NaiveDate;
 use log::{debug, error, info};
@@ -93,7 +93,7 @@ fn matching_category_ids(
     for filter_category in filter_categories {
         for (category_id, category) in category_map {
             debug!("checking if '{}' matches '{}", filter_category, category);
-            if EventFilter::categories_match(&filter_category, category) {
+            if categories_match(&filter_category, category) {
                 debug! {"'{}' matches '{}", filter_category, category}
                 category_ids.push(category_id.to_string());
             }
