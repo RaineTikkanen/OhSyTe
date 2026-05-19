@@ -39,7 +39,7 @@ struct Args {
     #[command(subcommand)]
     cmd: Option<Command>,
 
-    #[arg(short, long, help = "Event date in MMDD format")]
+    #[arg(short, long, help = "Event date in MM-DD format")]
     date: Option<String>,
 
     #[arg(
