@@ -123,7 +123,7 @@ pub fn categories_match(filter_category: &Category, event_category: &Category) -
             Some(event_secondary) => {
                 filter_category.primary() == event_category.primary()
                     || filter_category.primary() == event_secondary
-            },
+            }
             None => filter_category.primary() == event_category.primary(),
         },
     }

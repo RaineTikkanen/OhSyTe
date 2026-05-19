@@ -68,14 +68,8 @@ fn get_config_path(app_name: &str) -> Option<PathBuf> {
         let config_path = config_dir.join(app_name);
 
         if !config_path.exists() {
-            info!(
-                "No config directory found, creating one at: {:?}",
-                config_path
-            );
-            if let Err(_) = fs::create_dir(&config_path) {
-                info!("Unable to create config directory in {:?}", config_path);
-                return None;
-            }
+            error!("No config directory found at: {:?}", config_path);
+            return None;
         } else {
             info!("Found config directory at: {:?}", config_path);
         }
@@ -180,14 +174,6 @@ fn main() {
                     "Configuration file not found at '{}'.",
                     &toml_path.display()
                 );
-                info!("Creating empty configuration file.");
-                if let Err(_) = fs::write(&toml_path, "") {
-                    error!(
-                        "Error creating empty configuration file at '{}'",
-                        &toml_path.display()
-                    );
-                    return;
-                }
             }
 
             let config_str = match fs::read_to_string(&toml_path) {

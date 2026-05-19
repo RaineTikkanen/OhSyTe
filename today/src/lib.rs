@@ -61,7 +61,7 @@ fn create_providers(config: &Config, config_path: &Path) -> Vec<Box<dyn EventPro
                 providers.push(Box::new(provider));
             }
             _ => {
-                error!("Unable to make provider: {:?}", cfg);
+                error!("Provider kind not supported: {}", cfg.kind.as_str());
             }
         }
     }

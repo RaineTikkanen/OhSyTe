@@ -126,31 +126,30 @@ impl MonthDay {
         Ok(Self { month, day })
     }
 
-    pub fn from_str(s: &str) -> Result<Self, MonthDayParseError> {
-        debug!("month_day string: {}", s);
-        match s.len() {
-            4 => {
-                let month_string = &s[..2];
-                let month = match month_string.parse() {
-                    Ok(m) => m,
-                    Err(_) => return Err(MonthDayParseError::InvalidMonth),
-                };
-                if month < 1 || month > 12 {
-                    return Err(MonthDayParseError::InvalidMonth);
-                }
-                let day: u32 = match s[2..].parse() {
-                    Ok(d) => d,
-                    Err(_) => return Err(MonthDayParseError::InvalidDay),
-                };
-                if day < 1 || day > 31 {
-                    return Err(MonthDayParseError::InvalidDay);
-                }
-                match Self::new(month, day) {
-                    Ok(md) => Ok(md),
-                    Err(e) => Err(e),
-                }
-            }
-            _ => Err(MonthDayParseError::InvalidFormat),
+    pub fn from_str(month_day_string: &str) -> Result<Self, MonthDayParseError> {
+        let month_day: Vec<&str> = month_day_string.split('-').collect();
+        if month_day.len() != 2 {
+            return Err(MonthDayParseError::InvalidFormat);
+        };
+        let month_string = month_day[0];
+        let day_string = month_day[1];
+        let month = match month_string.parse() {
+            Ok(m) => m,
+            Err(_) => return Err(MonthDayParseError::InvalidMonth),
+        };
+        if month < 1 || month > 12 {
+            return Err(MonthDayParseError::InvalidMonth);
+        }
+        let day: u32 = match day_string.parse() {
+            Ok(d) => d,
+            Err(_) => return Err(MonthDayParseError::InvalidDay),
+        };
+        if day < 1 || day > 31 {
+            return Err(MonthDayParseError::InvalidDay);
+        }
+        match Self::new(month, day) {
+            Ok(md) => Ok(md),
+            Err(e) => Err(e),
         }
     }
 
@@ -423,24 +422,26 @@ mod tests {
 
     #[test]
     fn month_day_from_valid_str() {
-        let md = MonthDay::from_str("0101").unwrap();
+        let md = MonthDay::from_str("01-01").unwrap();
         assert_eq!(md.month(), 1);
         assert_eq!(md.day(), 1);
 
-        let md = MonthDay::from_str("1231").unwrap();
+        let md = MonthDay::from_str("12-31").unwrap();
         assert_eq!(md.month(), 12);
         assert_eq!(md.day(), 31);
-    }
+
+    let md = MonthDay::from_str("4-5").unwrap();
+        assert_eq!(md.month(), 4);
+        assert_eq!(md.day(), 5);    }
 
     #[test]
     fn month_day_from_invalid_string() {
-        MonthDay::from_str("01-01").unwrap_err();
-        MonthDay::from_str("1-1").unwrap_err();
+        MonthDay::from_str("0101").unwrap_err();
         MonthDay::from_str("103").unwrap_err();
-        MonthDay::from_str("1301").unwrap_err();
-        MonthDay::from_str("1032").unwrap_err();
-        MonthDay::from_str("0230").unwrap_err();
-        MonthDay::from_str("0332").unwrap_err();
+        MonthDay::from_str("13-01").unwrap_err();
+        MonthDay::from_str("10-32").unwrap_err();
+        MonthDay::from_str("02-30").unwrap_err();
+        MonthDay::from_str("03-32").unwrap_err();
         MonthDay::from_str("ERRR").unwrap_err();
     }
 
