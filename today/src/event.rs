@@ -1,7 +1,6 @@
 use std::fmt;
 
 use chrono::{Datelike, Local, Month, NaiveDate, Weekday as ChronoWeekday};
-use log::debug;
 use std::str::FromStr;
 use strum_macros::{Display, EnumString};
 

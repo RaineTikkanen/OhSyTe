@@ -95,7 +95,6 @@ pub fn run(
 pub fn add_event(config: &Config, config_path: &Path, provider_name: &str, event: &Event) {
     let providers = create_providers(config, config_path);
 
-    // Find provider by name
     let mut provider: Option<&dyn EventProvider> = None;
     for p in &providers {
         if p.name() == provider_name {
@@ -109,6 +108,8 @@ pub fn add_event(config: &Config, config_path: &Path, provider_name: &str, event
             if p.add_is_supported() {
                 if let Err(_e) = p.add_event(event) {
                     error!("Unable to add event");
+                }else{
+                    println!("Event successfully added to provider '{}'", provider_name)
                 }
             } else {
                 error!("Adding events is not supported for provider '{}'", p.name());
